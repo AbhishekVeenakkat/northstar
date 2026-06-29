@@ -196,32 +196,16 @@ body {
   --float-delay: -1.1s;
   --float-duration: 7.4s;
   --hero-icon-size: clamp(46px, 6vw, 88px);
-  top: 17%;
-  left: min(10vw, 128px);
-}
-
-.hero-icon-pencil {
-  --float-delay: -2.4s;
-  --float-duration: 8s;
-  --hero-icon-size: clamp(52px, 6.6vw, 94px);
-  top: 14%;
-  right: min(11vw, 150px);
+  top: 21%;
+  left: min(15vw, 190px);
 }
 
 .hero-icon-pen {
-  --float-delay: -3.2s;
+  --float-delay: -2.4s;
   --float-duration: 7.7s;
   --hero-icon-size: clamp(42px, 5.2vw, 76px);
-  bottom: 18%;
-  left: min(15vw, 210px);
-}
-
-.hero-icon-ruler {
-  --float-delay: -1.8s;
-  --float-duration: 8.4s;
-  --hero-icon-size: clamp(45px, 5.7vw, 80px);
-  right: min(18vw, 250px);
-  bottom: 15%;
+  right: min(15vw, 190px);
+  bottom: 22%;
 }
 
 .header-frame {
@@ -1643,26 +1627,14 @@ body {
 
   .hero-icon-ai {
     --hero-icon-size: clamp(38px, 7.2vw, 60px);
-    top: 18%;
-    left: 7%;
-  }
-
-  .hero-icon-pencil {
-    --hero-icon-size: clamp(42px, 8vw, 64px);
-    top: 18%;
-    right: 6%;
+    top: 20%;
+    left: 13%;
   }
 
   .hero-icon-pen {
     --hero-icon-size: clamp(35px, 6.7vw, 54px);
-    bottom: 20%;
-    left: 9%;
-  }
-
-  .hero-icon-ruler {
-    --hero-icon-size: clamp(35px, 6.7vw, 54px);
-    right: 12%;
-    bottom: 18%;
+    right: 13%;
+    bottom: 23%;
   }
 
   .portrait-section {
@@ -2063,27 +2035,15 @@ body {
   }
 
   .hero-icon-ai {
-    --hero-icon-size: clamp(30px, 8.8vw, 40px);
-    top: 15%;
-    left: 7%;
-  }
-
-  .hero-icon-pencil {
-    --hero-icon-size: clamp(32px, 9.6vw, 43px);
-    top: 15%;
-    right: 6%;
+    --hero-icon-size: clamp(38px, 11.2vw, 52px);
+    top: 20%;
+    left: 13%;
   }
 
   .hero-icon-pen {
-    --hero-icon-size: clamp(28px, 8.4vw, 38px);
-    bottom: 21%;
-    left: 7%;
-  }
-
-  .hero-icon-ruler {
-    --hero-icon-size: clamp(28px, 8.4vw, 38px);
-    right: 9%;
-    bottom: 21%;
+    --hero-icon-size: clamp(36px, 10.8vw, 50px);
+    right: 13%;
+    bottom: 24%;
   }
 
   .portrait-parallax {
@@ -2105,10 +2065,10 @@ body {
     align-self: auto;
     justify-self: center;
     grid-template-columns: minmax(0, 1fr);
-    gap: 7px;
+    gap: 5px;
     width: min(15.5rem, calc(100% - 56px));
     margin: 0 0 clamp(8px, 1.8dvh, 20px);
-    font-size: clamp(0.9rem, 3.7vw, 1.06rem);
+    font-size: clamp(1rem, 4.2vw, 1.16rem);
     transform: translate3d(
       0,
       calc(8px + ((1 - var(--portrait-progress)) * -18px)),
@@ -2119,8 +2079,11 @@ body {
   .portrait-statement li {
     --role-offset-y: 0px;
     --role-tilt: -0.8deg;
-    min-height: 32px;
-    padding: 0 14px;
+    height: 40px;
+    min-height: 40px;
+    max-height: 40px;
+    padding: 0 12px;
+    line-height: 1;
   }
 
   .portrait-statement li:nth-child(2) {

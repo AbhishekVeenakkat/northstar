@@ -16,22 +16,10 @@ const heroIcons = [
     src: '/hero-icons/ai.png',
   },
   {
-    alt: 'Pencil',
-    className: 'hero-icon-pencil',
-    delay: 0.24,
-    src: '/hero-icons/pencil.png',
-  },
-  {
     alt: 'Pen nib',
     className: 'hero-icon-pen',
-    delay: 0.38,
+    delay: 0.24,
     src: '/hero-icons/pen.png',
-  },
-  {
-    alt: 'Ruler',
-    className: 'hero-icon-ruler',
-    delay: 0.52,
-    src: '/hero-icons/ruler.png',
   },
 ] as const
 const manifestoLines = [
