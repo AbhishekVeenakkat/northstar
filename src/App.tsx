@@ -9,15 +9,26 @@ const manifestoLines = [
   ['showcases', 'our', 'passion', 'for', 'art.'],
 ]
 
+const getViewportCoverage = (element: Element) => {
+  const rect = element.getBoundingClientRect()
+  const viewportHeight = window.innerHeight || 1
+  const visibleHeight = Math.min(rect.bottom, viewportHeight) - Math.max(rect.top, 0)
+
+  return Math.max(0, Math.min(1, visibleHeight / viewportHeight))
+}
+
 function App() {
   const cursorRef = useRef<HTMLDivElement>(null)
   const deckStageRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLCanvasElement>(null)
   const heroSectionRef = useRef<HTMLElement>(null)
+  const heroSlimePathRef = useRef<SVGPathElement>(null)
   const portraitGridRef = useRef<HTMLCanvasElement>(null)
   const portraitSectionRef = useRef<HTMLElement>(null)
   const closingGridRef = useRef<HTMLCanvasElement>(null)
+  const closingSlimePathRef = useRef<SVGPathElement>(null)
   const closingSectionRef = useRef<HTMLElement>(null)
+  const fourthSectionRef = useRef<HTMLElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -41,6 +52,14 @@ function App() {
 
     return ''
   })
+
+  useEffect(() => {
+    if ('scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual'
+    }
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [])
 
   useEffect(() => {
     const cursor = cursorRef.current
@@ -73,6 +92,10 @@ function App() {
     let targetGridX = gridX
     let targetGridY = gridY
     let pointerActive = false
+    let gridActive = false
+    let gridNeedsDraw = true
+    let lastPointerX = targetCursorX
+    let lastPointerY = targetCursorY
     const cursorEnabled = Boolean(cursor && canHover && !prefersReducedMotion)
     const gridResponsive = canHover && !prefersReducedMotion
 
@@ -98,7 +121,7 @@ function App() {
       for (let y = spacing / 2; y < canvasHeight; y += spacing) {
         for (let x = spacing / 2; x < canvasWidth; x += spacing) {
           const distance = Math.hypot(x - gridX, y - gridY)
-          const proximity = pointerActive
+          const proximity = gridActive
             ? Math.max(0, 1 - distance / influence)
             : 0
           const easedProximity = proximity * proximity * (3 - 2 * proximity)
@@ -115,6 +138,7 @@ function App() {
 
     const handleResize = () => {
       resizeCanvas()
+      gridNeedsDraw = true
       drawGrid()
     }
 
@@ -127,7 +151,34 @@ function App() {
       }
     }
 
+    const syncGridTarget = () => {
+      const rect = canvas.getBoundingClientRect()
+      targetGridX = lastPointerX - rect.left
+      targetGridY = lastPointerY - rect.top
+      const nextGridActive = pointerActive && getViewportCoverage(canvas) >= 0.7
+
+      if (gridActive !== nextGridActive) {
+        gridNeedsDraw = true
+      }
+
+      gridActive = nextGridActive
+    }
+
+    const scheduleRender = () => {
+      if (animationFrame) {
+        return
+      }
+
+      animationFrame = window.requestAnimationFrame(render)
+    }
+
     const render = () => {
+      animationFrame = 0
+      const cursorDeltaX = targetCursorX - cursorX
+      const cursorDeltaY = targetCursorY - cursorY
+      const gridDeltaX = targetGridX - gridX
+      const gridDeltaY = targetGridY - gridY
+
       cursorX += (targetCursorX - cursorX) * 0.18
       cursorY += (targetCursorY - cursorY) * 0.18
       gridX += (targetGridX - gridX) * 0.18
@@ -138,8 +189,20 @@ function App() {
         cursor.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0) translate(-50%, -50%)`
       }
 
-      drawGrid()
-      animationFrame = window.requestAnimationFrame(render)
+      if (gridNeedsDraw || gridActive) {
+        drawGrid()
+        gridNeedsDraw = false
+      }
+
+      const isMoving =
+        Math.abs(cursorDeltaX) > 0.08 ||
+        Math.abs(cursorDeltaY) > 0.08 ||
+        Math.abs(gridDeltaX) > 0.08 ||
+        Math.abs(gridDeltaY) > 0.08
+
+      if (isMoving) {
+        scheduleRender()
+      }
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -150,33 +213,51 @@ function App() {
           menuRef.current.classList.contains('is-open'),
       )
 
-      const rect = canvas.getBoundingClientRect()
       targetCursorX = event.clientX
       targetCursorY = event.clientY
-      targetGridX = event.clientX - rect.left
-      targetGridY = event.clientY - rect.top
+      lastPointerX = event.clientX
+      lastPointerY = event.clientY
+      syncGridTarget()
       pointerActive = true
 
       if (cursor) {
         cursor.style.background = isOverOpenMenu ? '#f3c623' : '#1677ff'
       }
+
+      scheduleRender()
     }
 
     const handlePointerLeave = () => {
       pointerActive = false
+      if (gridActive) {
+        gridNeedsDraw = true
+      }
+      gridActive = false
       if (cursor) {
         cursor.style.opacity = '0'
       }
+      scheduleRender()
+    }
+
+    const handleScroll = () => {
+      if (!pointerActive) {
+        return
+      }
+
+      syncGridTarget()
+      scheduleRender()
     }
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true })
     window.addEventListener('pointerleave', handlePointerLeave)
+    window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', handleResize)
-    animationFrame = window.requestAnimationFrame(render)
+    scheduleRender()
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerleave', handlePointerLeave)
+      window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
       window.cancelAnimationFrame(animationFrame)
     }
@@ -191,9 +272,12 @@ function App() {
   useEffect(() => {
     const deckStage = deckStageRef.current
     const heroSection = heroSectionRef.current
+    const heroSlimePath = heroSlimePathRef.current
     const section = portraitSectionRef.current
     const canvas = portraitGridRef.current
     const closingSection = closingSectionRef.current
+    const closingSlimePath = closingSlimePathRef.current
+    const fourthSection = fourthSectionRef.current
     const closingCanvas = closingGridRef.current
     const prefersReducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
@@ -202,9 +286,12 @@ function App() {
     if (
       !deckStage ||
       !heroSection ||
+      !heroSlimePath ||
       !section ||
       !canvas ||
       !closingSection ||
+      !closingSlimePath ||
+      !fourthSection ||
       !closingCanvas ||
       prefersReducedMotion
     ) {
@@ -218,6 +305,8 @@ function App() {
     }
 
     let animationFrame = 0
+    let parallaxFrame = 0
+    let slimeFrame = 0
     let canvasWidth = 0
     let canvasHeight = 0
     let closingCanvasWidth = 0
@@ -233,6 +322,24 @@ function App() {
     let targetClosingGridY = closingGridY
     let closingPointerActive = false
     let pointerActive = false
+    let lastPointerX = window.innerWidth / 2
+    let lastPointerY = window.innerHeight / 2
+    let hasPointer = false
+    let portraitNeedsDraw = true
+    let closingNeedsDraw = true
+    let snapTimeout = 0
+    let lastHeroProgress = 0
+    let hasMeasuredHeroProgress = false
+    let lastClosingProgress = 0
+    let hasMeasuredClosingProgress = false
+    let lastFourthProgress = 0
+    let hasMeasuredFourthProgress = false
+    let slimePosition = 0
+    let slimeTarget = 0
+    let closingSlimePosition = 0
+    let closingSlimeTarget = 0
+    let closingBottomSlimePosition = 0
+    let closingBottomSlimeTarget = 0
 
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect()
@@ -283,6 +390,108 @@ function App() {
       }
     }
 
+    const setHeroSlimePath = (amount: number) => {
+      const strength = Math.min(1, Math.abs(amount))
+      const isScrollDownReaction = amount >= 0
+      const slimeEdge = isScrollDownReaction
+        ? 1 - strength * 0.42
+        : 1 - strength * 0.02
+      const slimeShoulder = 1 - strength * 0.18
+      const slimePeak = isScrollDownReaction
+        ? 1 - strength * 0.02
+        : 1 - strength * 0.42
+      const slimePath = [
+        'M 0 0 H 1',
+        `V ${slimeEdge.toFixed(4)}`,
+        `C 0.9 ${slimeEdge.toFixed(4)}, 0.84 ${slimeEdge.toFixed(4)}, 0.76 ${slimeShoulder.toFixed(4)}`,
+        `C 0.66 ${slimePeak.toFixed(4)}, 0.6 ${slimePeak.toFixed(4)}, 0.5 ${slimePeak.toFixed(4)}`,
+        `C 0.4 ${slimePeak.toFixed(4)}, 0.34 ${slimePeak.toFixed(4)}, 0.24 ${slimeShoulder.toFixed(4)}`,
+        `C 0.16 ${slimeEdge.toFixed(4)}, 0.1 ${slimeEdge.toFixed(4)}, 0 ${slimeEdge.toFixed(4)}`,
+        'V 0 Z',
+      ].join(' ')
+
+      heroSlimePath.setAttribute('d', slimePath)
+    }
+
+    const setClosingSlimePath = (topAmount: number, bottomAmount: number) => {
+      const topStrength = Math.min(1, Math.abs(topAmount))
+      const isTopScrollDownReaction = topAmount >= 0
+      const topEdge = isTopScrollDownReaction
+        ? topStrength * 0.02
+        : topStrength * 0.42
+      const topShoulder = topStrength * 0.18
+      const topPeak = isTopScrollDownReaction
+        ? topStrength * 0.42
+        : topStrength * 0.02
+      const bottomStrength = Math.min(1, Math.abs(bottomAmount))
+      const isBottomScrollDownReaction = bottomAmount >= 0
+      const bottomEdge = isBottomScrollDownReaction
+        ? 1 - bottomStrength * 0.42
+        : 1 - bottomStrength * 0.02
+      const bottomShoulder = 1 - bottomStrength * 0.18
+      const bottomPeak = isBottomScrollDownReaction
+        ? 1 - bottomStrength * 0.02
+        : 1 - bottomStrength * 0.42
+      const slimePath = [
+        `M 0 ${topEdge.toFixed(4)}`,
+        `C 0.1 ${topEdge.toFixed(4)}, 0.16 ${topEdge.toFixed(4)}, 0.24 ${topShoulder.toFixed(4)}`,
+        `C 0.34 ${topPeak.toFixed(4)}, 0.4 ${topPeak.toFixed(4)}, 0.5 ${topPeak.toFixed(4)}`,
+        `C 0.6 ${topPeak.toFixed(4)}, 0.66 ${topPeak.toFixed(4)}, 0.76 ${topShoulder.toFixed(4)}`,
+        `C 0.84 ${topEdge.toFixed(4)}, 0.9 ${topEdge.toFixed(4)}, 1 ${topEdge.toFixed(4)}`,
+        `V ${bottomEdge.toFixed(4)}`,
+        `C 0.9 ${bottomEdge.toFixed(4)}, 0.84 ${bottomEdge.toFixed(4)}, 0.76 ${bottomShoulder.toFixed(4)}`,
+        `C 0.66 ${bottomPeak.toFixed(4)}, 0.6 ${bottomPeak.toFixed(4)}, 0.5 ${bottomPeak.toFixed(4)}`,
+        `C 0.4 ${bottomPeak.toFixed(4)}, 0.34 ${bottomPeak.toFixed(4)}, 0.24 ${bottomShoulder.toFixed(4)}`,
+        `C 0.16 ${bottomEdge.toFixed(4)}, 0.1 ${bottomEdge.toFixed(4)}, 0 ${bottomEdge.toFixed(4)}`,
+        'Z',
+      ].join(' ')
+
+      closingSlimePath.setAttribute('d', slimePath)
+    }
+
+    const scheduleSlimeRender = () => {
+      if (slimeFrame) {
+        return
+      }
+
+      slimeFrame = window.requestAnimationFrame(renderSlime)
+    }
+
+    const renderSlime = () => {
+      slimeFrame = 0
+      slimeTarget *= 0.82
+      slimePosition += (slimeTarget - slimePosition) * 0.14
+      closingSlimeTarget *= 0.82
+      closingSlimePosition +=
+        (closingSlimeTarget - closingSlimePosition) * 0.14
+      closingBottomSlimeTarget *= 0.82
+      closingBottomSlimePosition +=
+        (closingBottomSlimeTarget - closingBottomSlimePosition) * 0.14
+
+      if (
+        Math.abs(slimePosition) < 0.002 &&
+        Math.abs(slimeTarget) < 0.002 &&
+        Math.abs(closingSlimePosition) < 0.002 &&
+        Math.abs(closingSlimeTarget) < 0.002 &&
+        Math.abs(closingBottomSlimePosition) < 0.002 &&
+        Math.abs(closingBottomSlimeTarget) < 0.002
+      ) {
+        slimePosition = 0
+        slimeTarget = 0
+        closingSlimePosition = 0
+        closingSlimeTarget = 0
+        closingBottomSlimePosition = 0
+        closingBottomSlimeTarget = 0
+        setHeroSlimePath(0)
+        setClosingSlimePath(0, 0)
+        return
+      }
+
+      setHeroSlimePath(slimePosition)
+      setClosingSlimePath(closingSlimePosition, closingBottomSlimePosition)
+      scheduleSlimeRender()
+    }
+
     const updateParallax = () => {
       const deckRect = deckStage.getBoundingClientRect()
       const viewportHeight = window.innerHeight || 1
@@ -298,8 +507,58 @@ function App() {
         1,
         Math.max(0, (-deckRect.top - viewportHeight * 2) / viewportHeight),
       )
+      const fourthProgress = Math.min(
+        1,
+        Math.max(0, (-deckRect.top - viewportHeight * 3) / viewportHeight),
+      )
+      const heroDelta = heroProgress - lastHeroProgress
+      const closingDelta = closingProgress - lastClosingProgress
+      const fourthDelta = fourthProgress - lastFourthProgress
 
-      heroSection.style.setProperty('--hero-scroll-progress', heroProgress.toString())
+      if (
+        hasMeasuredHeroProgress &&
+        Math.abs(heroDelta) > 0.0004 &&
+        heroProgress > 0.01 &&
+        heroProgress < 0.99
+      ) {
+        slimeTarget = Math.max(-1, Math.min(1, heroDelta * -46.4))
+        scheduleSlimeRender()
+      }
+
+      if (
+        hasMeasuredClosingProgress &&
+        Math.abs(closingDelta) > 0.0004 &&
+        closingProgress > 0.01 &&
+        closingProgress < 0.99
+      ) {
+        closingSlimeTarget = Math.max(-1, Math.min(1, closingDelta * -46.4))
+        scheduleSlimeRender()
+      }
+
+      if (
+        hasMeasuredFourthProgress &&
+        Math.abs(fourthDelta) > 0.0004 &&
+        fourthProgress > 0.01 &&
+        fourthProgress < 0.99
+      ) {
+        closingBottomSlimeTarget = Math.max(
+          -1,
+          Math.min(1, fourthDelta * -46.4),
+        )
+        scheduleSlimeRender()
+      }
+
+      hasMeasuredHeroProgress = true
+      hasMeasuredClosingProgress = true
+      hasMeasuredFourthProgress = true
+      lastHeroProgress = heroProgress
+      lastClosingProgress = closingProgress
+      lastFourthProgress = fourthProgress
+
+      heroSection.style.setProperty(
+        '--hero-scroll-progress',
+        heroProgress.toString(),
+      )
       section.style.setProperty('--portrait-progress', heroProgress.toString())
       section.style.setProperty(
         '--portrait-exit-progress',
@@ -310,83 +569,229 @@ function App() {
         closingProgress.toString(),
       )
       closingSection.style.setProperty(
+        '--closing-exit-progress',
+        fourthProgress.toString(),
+      )
+      closingSection.style.setProperty(
         '--closing-word-progress',
         closingWordProgress.toString(),
       )
+      fourthSection.style.setProperty(
+        '--fourth-underlay-progress',
+        fourthProgress > 0.001 ? '1' : '0',
+      )
+    }
+
+    const syncPointerTargets = () => {
+      const rect = canvas.getBoundingClientRect()
+      const closingRect = closingCanvas.getBoundingClientRect()
+      const isInsideSection =
+        lastPointerX >= rect.left &&
+        lastPointerX <= rect.right &&
+        lastPointerY >= rect.top &&
+        lastPointerY <= rect.bottom
+      const isInsideClosingSection =
+        lastPointerX >= closingRect.left &&
+        lastPointerX <= closingRect.right &&
+        lastPointerY >= closingRect.top &&
+        lastPointerY <= closingRect.bottom
+      const nextPointerActive =
+        hasPointer && isInsideSection && getViewportCoverage(section) >= 0.7
+      const nextClosingPointerActive =
+        hasPointer &&
+        isInsideClosingSection &&
+        getViewportCoverage(closingSection) >= 0.7
+
+      targetGridX = lastPointerX - rect.left
+      targetGridY = lastPointerY - rect.top
+      targetClosingGridX = lastPointerX - closingRect.left
+      targetClosingGridY = lastPointerY - closingRect.top
+
+      if (pointerActive !== nextPointerActive) {
+        portraitNeedsDraw = true
+      }
+
+      if (closingPointerActive !== nextClosingPointerActive) {
+        closingNeedsDraw = true
+      }
+
+      pointerActive = nextPointerActive
+      closingPointerActive = nextClosingPointerActive
+    }
+
+    const scheduleDotRender = () => {
+      if (animationFrame) {
+        return
+      }
+
+      animationFrame = window.requestAnimationFrame(render)
+    }
+
+    const scheduleParallaxUpdate = () => {
+      if (parallaxFrame) {
+        return
+      }
+
+      parallaxFrame = window.requestAnimationFrame(() => {
+        parallaxFrame = 0
+        updateParallax()
+
+        if (hasPointer) {
+          syncPointerTargets()
+          scheduleDotRender()
+        }
+      })
+    }
+
+    const snapToNearestSection = () => {
+      const viewportHeight = window.innerHeight || 1
+      const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
+      const relativeScroll = window.scrollY - deckTop
+      const maxSnapDistance = viewportHeight * 0.18
+      const snapPoints = [0, viewportHeight, viewportHeight * 2, viewportHeight * 3]
+      const nearestPoint = snapPoints.reduce((nearest, point) =>
+        Math.abs(point - relativeScroll) < Math.abs(nearest - relativeScroll)
+          ? point
+          : nearest,
+      )
+
+      if (Math.abs(nearestPoint - relativeScroll) > maxSnapDistance) {
+        return
+      }
+
+      window.scrollTo({
+        top: deckTop + nearestPoint,
+        behavior: 'smooth',
+      })
+    }
+
+    const scheduleSectionSnap = () => {
+      window.clearTimeout(snapTimeout)
+      snapTimeout = window.setTimeout(snapToNearestSection, 120)
+    }
+
+    const handleDeckScroll = () => {
+      scheduleParallaxUpdate()
+      scheduleSectionSnap()
     }
 
     const render = () => {
+      animationFrame = 0
+      const gridDeltaX = targetGridX - gridX
+      const gridDeltaY = targetGridY - gridY
+      const closingGridDeltaX = targetClosingGridX - closingGridX
+      const closingGridDeltaY = targetClosingGridY - closingGridY
+
       gridX += (targetGridX - gridX) * 0.18
       gridY += (targetGridY - gridY) * 0.18
       closingGridX += (targetClosingGridX - closingGridX) * 0.18
       closingGridY += (targetClosingGridY - closingGridY) * 0.18
 
-      updateParallax()
-      drawDots(
-        context,
-        canvasWidth,
-        canvasHeight,
-        gridX,
-        gridY,
-        pointerActive,
-        'rgb(255 255 255 / 0.25)',
-      )
-      drawDots(
-        closingContext,
-        closingCanvasWidth,
-        closingCanvasHeight,
-        closingGridX,
-        closingGridY,
-        closingPointerActive,
-        'rgb(255 255 255 / 0.12)',
-      )
-      animationFrame = window.requestAnimationFrame(render)
+      const portraitMoving =
+        Math.abs(gridDeltaX) > 0.08 ||
+        Math.abs(gridDeltaY) > 0.08
+      const closingMoving =
+        Math.abs(closingGridDeltaX) > 0.08 ||
+        Math.abs(closingGridDeltaY) > 0.08
+
+      if (portraitNeedsDraw || pointerActive) {
+        drawDots(
+          context,
+          canvasWidth,
+          canvasHeight,
+          gridX,
+          gridY,
+          pointerActive,
+          'rgb(255 255 255 / 0.3)',
+        )
+        portraitNeedsDraw = false
+      }
+
+      if (closingNeedsDraw || closingPointerActive) {
+        drawDots(
+          closingContext,
+          closingCanvasWidth,
+          closingCanvasHeight,
+          closingGridX,
+          closingGridY,
+          closingPointerActive,
+          'rgb(255 255 255 / 0.12)',
+        )
+        closingNeedsDraw = false
+      }
+
+      if (
+        (pointerActive && portraitMoving) ||
+        (closingPointerActive && closingMoving)
+      ) {
+        scheduleDotRender()
+      }
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      const closingRect = closingCanvas.getBoundingClientRect()
-      const isInsideSection =
-        event.clientX >= rect.left &&
-        event.clientX <= rect.right &&
-        event.clientY >= rect.top &&
-        event.clientY <= rect.bottom
-      const isInsideClosingSection =
-        event.clientX >= closingRect.left &&
-        event.clientX <= closingRect.right &&
-        event.clientY >= closingRect.top &&
-        event.clientY <= closingRect.bottom
-
-      targetGridX = event.clientX - rect.left
-      targetGridY = event.clientY - rect.top
-      targetClosingGridX = event.clientX - closingRect.left
-      targetClosingGridY = event.clientY - closingRect.top
-      pointerActive = isInsideSection
-      closingPointerActive = isInsideClosingSection
+      lastPointerX = event.clientX
+      lastPointerY = event.clientY
+      hasPointer = true
+      syncPointerTargets()
+      scheduleDotRender()
     }
 
     const handlePointerLeave = () => {
-      pointerActive = false
-      closingPointerActive = false
+      hasPointer = false
+      if (pointerActive) {
+        portraitNeedsDraw = true
+        pointerActive = false
+      }
+      if (closingPointerActive) {
+        closingNeedsDraw = true
+        closingPointerActive = false
+      }
+      scheduleDotRender()
     }
 
     const handleResize = () => {
       resizeCanvas()
       updateParallax()
+      syncPointerTargets()
+      portraitNeedsDraw = true
+      closingNeedsDraw = true
+      scheduleDotRender()
     }
 
     resizeCanvas()
     updateParallax()
-    animationFrame = window.requestAnimationFrame(render)
+    drawDots(
+      context,
+      canvasWidth,
+      canvasHeight,
+      gridX,
+      gridY,
+      false,
+      'rgb(255 255 255 / 0.3)',
+    )
+    drawDots(
+      closingContext,
+      closingCanvasWidth,
+      closingCanvasHeight,
+      closingGridX,
+      closingGridY,
+      false,
+      'rgb(255 255 255 / 0.12)',
+    )
     window.addEventListener('pointermove', handlePointerMove, { passive: true })
     window.addEventListener('pointerleave', handlePointerLeave)
+    window.addEventListener('scroll', handleDeckScroll, { passive: true })
     window.addEventListener('resize', handleResize)
 
     return () => {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerleave', handlePointerLeave)
+      window.removeEventListener('scroll', handleDeckScroll)
       window.removeEventListener('resize', handleResize)
+      window.clearTimeout(snapTimeout)
       window.cancelAnimationFrame(animationFrame)
+      window.cancelAnimationFrame(parallaxFrame)
+      window.cancelAnimationFrame(slimeFrame)
     }
   }, [])
 
@@ -481,6 +886,16 @@ function App() {
 
   return (
     <main className="app-shell">
+      <svg className="hero-slime-defs" aria-hidden="true">
+        <defs>
+          <clipPath id="hero-slime-clip" clipPathUnits="objectBoundingBox">
+            <path ref={heroSlimePathRef} d="M 0 0 H 1 V 1 H 0 Z" />
+          </clipPath>
+          <clipPath id="closing-slime-clip" clipPathUnits="objectBoundingBox">
+            <path ref={closingSlimePathRef} d="M 0 0 H 1 V 1 H 0 Z" />
+          </clipPath>
+        </defs>
+      </svg>
       <div ref={cursorRef} className="smooth-cursor" aria-hidden="true" />
       <div ref={deckStageRef} className="deck-stage">
         <section
@@ -570,6 +985,11 @@ function App() {
             })}
           </p>
         </section>
+        <section
+          ref={fourthSectionRef}
+          className="fourth-section"
+          aria-label="Selected work"
+        />
       </div>
       <div
         ref={menuRef}

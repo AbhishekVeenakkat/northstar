@@ -8,16 +8,26 @@
 
 .deck-stage {
   position: relative;
-  height: 400svh;
-  background: #00d98f;
+  height: 500svh;
+  background: linear-gradient(
+    to bottom,
+    #f5efe6 0,
+    #f5efe6 100svh,
+    #00f29f 100svh,
+    #00f29f 300svh,
+    #ffffff 300svh,
+    #ffffff 500svh
+  );
 }
 
 .header-section {
   --hero-scroll-progress: 0;
   position: sticky;
-  top: 0;
+  top: -1px;
+  left: -2px;
   isolation: isolate;
   z-index: 2;
+  width: calc(100% + 4px);
   min-height: 100svh;
   overflow: hidden;
   background: #f5efe6;
@@ -26,7 +36,15 @@
     calc(var(--hero-scroll-progress) * -100svh),
     0
   );
-  will-change: transform;
+  clip-path: url("#hero-slime-clip");
+  will-change: transform, clip-path;
+}
+
+.hero-slime-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .dot-grid {
@@ -65,6 +83,7 @@
 
 .header-frame {
   position: relative;
+  z-index: 1;
   width: min(1180px, calc(100% - 32px));
   min-height: 100svh;
   margin: 0 auto;
@@ -86,12 +105,14 @@
   min-height: 1.1em;
   margin: 0;
   font-family: 'EB Garamond', Georgia, serif;
-  font-size: clamp(2.8rem, 7.6vw, 7.2rem);
+  font-size: clamp(2.55rem, 6.8vw, 6.45rem);
   font-weight: 500;
   line-height: 0.92;
   color: #17130f;
   text-align: center;
   text-shadow:
+    0 10px 28px rgb(23 19 15 / 0.16),
+    0 2px 10px rgb(23 19 15 / 0.12),
     -0.018em 0 rgb(231 42 71 / 0.28),
     0.018em 0 rgb(0 147 183 / 0.24);
   white-space: nowrap;
@@ -429,7 +450,7 @@
   min-height: 100svh;
   margin-top: -100svh;
   overflow: hidden;
-  background: #00d98f;
+  background: #00f29f;
   transform: translate3d(
     0,
     calc(var(--portrait-exit-progress) * -22svh),
@@ -468,6 +489,7 @@
   display: grid;
   grid-template-rows: 1fr auto;
   justify-items: center;
+  isolation: isolate;
   transform: translate3d(
     0,
     calc((1 - var(--portrait-progress)) * 150px),
@@ -478,12 +500,14 @@
 
 .portrait-statement {
   --portrait-text-reveal: clamp(0, calc((var(--portrait-progress) - 0.2) * 2.2), 1);
+  position: relative;
+  z-index: 2;
   align-self: end;
   width: min(860px, calc(100% - 32px));
-  margin: 0 0 clamp(12px, 2.6vw, 30px);
-  color: #ffffff;
+  margin: 0 0 clamp(44px, 6vw, 80px);
+  color: #252525;
   font-family: 'EB Garamond', Georgia, serif;
-  font-size: clamp(1.6rem, 3.5vw, 3.6rem);
+  font-size: clamp(1.15rem, 2.35vw, 2.45rem);
   font-weight: 500;
   line-height: 0.98;
   text-align: center;
@@ -491,9 +515,9 @@
   opacity: var(--portrait-text-reveal);
   text-shadow:
     0 0 calc(var(--portrait-text-reveal) * 10px)
-      rgb(255 255 255 / calc(var(--portrait-text-reveal) * 0.22)),
+      rgb(37 37 37 / calc(var(--portrait-text-reveal) * 0.18)),
     0 0 calc(var(--portrait-text-reveal) * 26px)
-      rgb(255 255 255 / calc(var(--portrait-text-reveal) * 0.12));
+      rgb(37 37 37 / calc(var(--portrait-text-reveal) * 0.08));
   transform: translate3d(
     0,
     calc((1 - var(--portrait-progress)) * -34px),
@@ -503,6 +527,8 @@
 }
 
 .portrait-image {
+  position: relative;
+  z-index: 1;
   display: block;
   width: min(76vw, 720px);
   max-width: calc(100vw - 36px);
@@ -516,24 +542,54 @@
   will-change: transform;
 }
 
+@media (max-width: 900px) {
+  .portrait-statement {
+    font-size: clamp(1.35rem, 3.8vw, 2.65rem);
+  }
+}
+
 .closing-section {
   --closing-progress: 0;
+  --closing-exit-progress: 0;
   --closing-word-progress: 0;
   position: sticky;
-  top: 0;
+  top: -1px;
+  left: -2px;
   z-index: 3;
   display: grid;
   place-items: center;
-  min-height: 100svh;
+  width: calc(100% + 4px);
+  min-height: calc(100svh + 2px);
   margin-top: -100svh;
   overflow: hidden;
   background: #252525;
   transform: translate3d(
     0,
-    calc((1 - var(--closing-progress)) * 100svh),
+    calc(
+      ((1 - var(--closing-progress)) * 100svh) -
+        (var(--closing-exit-progress) * 100svh)
+    ),
     0
   );
-  will-change: transform;
+  clip-path: url("#closing-slime-clip");
+  will-change: transform, clip-path;
+}
+
+.fourth-section {
+  --fourth-underlay-progress: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 100svh;
+  margin-top: -100svh;
+  background: #ffffff;
+  opacity: var(--fourth-underlay-progress);
+  transform: translate3d(
+    0,
+    calc((1 - var(--fourth-underlay-progress)) * 100svh),
+    0
+  );
+  will-change: opacity, transform;
 }
 
 .closing-dot-grid {
@@ -670,7 +726,8 @@
 @media (hover: hover) and (pointer: fine) {
   .deck-stage,
   .header-section,
-  .portrait-section {
+  .portrait-section,
+  .closing-section {
     cursor: none;
   }
 
@@ -690,7 +747,7 @@
 
 @media (max-width: 640px) {
   .hero-title {
-    font-size: clamp(2.45rem, 11.5vw, 4.4rem);
+    font-size: clamp(2.2rem, 10.4vw, 4rem);
     white-space: normal;
   }
 
@@ -703,8 +760,45 @@
     text-align: center;
   }
 
+  .portrait-parallax {
+    box-sizing: border-box;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    align-content: stretch;
+    justify-items: center;
+    padding: clamp(34px, 6svh, 56px) 0 0;
+    transform: translate3d(
+      0,
+      calc((1 - var(--portrait-progress)) * 96px),
+      0
+    );
+  }
+
+  .portrait-statement {
+    align-self: auto;
+    justify-self: center;
+    width: min(21rem, calc(100% - 32px));
+    margin: 0 0 clamp(8px, 1.8svh, 20px);
+    font-size: clamp(1.42rem, 5.4vw, 2.2rem);
+    text-align: center;
+    transform: translate3d(
+      0,
+      calc(60px + ((1 - var(--portrait-progress)) * -34px)),
+      0
+    );
+  }
+
   .portrait-image {
-    width: min(104vw, 520px);
+    align-self: end;
+    justify-self: center;
+    width: auto;
+    max-width: none;
+    height: min(64svh, calc(100svh - 176px));
+    transform: translate3d(
+      10px,
+      calc((1 - var(--portrait-progress)) * 70px),
+      0
+    );
   }
 }
 
@@ -746,7 +840,7 @@
   .portrait-dot-grid {
     background-image: radial-gradient(
       circle,
-      rgb(255 255 255 / 0.25) 1.75px,
+      rgb(255 255 255 / 0.3) 1.75px,
       transparent 2.1px
     );
     background-position: center;
