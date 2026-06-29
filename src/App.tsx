@@ -1,9 +1,39 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion, useAnimationControls, useReducedMotion } from 'framer-motion'
 import './App.css'
 
 const introText = 'ux by abhi'
 const nameText = 'Abhishek Veenakkat'
+const loadingTexts = ['Namàsté', 'Vanàkkam', 'Swàgatham', 'Welcome']
+const loadingTotalDuration = 2000
+const loadingExitDuration = 500
+const loadingMorphDuration = loadingTotalDuration - loadingExitDuration
+const heroIcons = [
+  {
+    alt: 'AI sparkle',
+    className: 'hero-icon-ai',
+    delay: 0.1,
+    src: '/hero-icons/ai.png',
+  },
+  {
+    alt: 'Pencil',
+    className: 'hero-icon-pencil',
+    delay: 0.24,
+    src: '/hero-icons/pencil.png',
+  },
+  {
+    alt: 'Pen nib',
+    className: 'hero-icon-pen',
+    delay: 0.38,
+    src: '/hero-icons/pen.png',
+  },
+  {
+    alt: 'Ruler',
+    className: 'hero-icon-ruler',
+    delay: 0.52,
+    src: '/hero-icons/ruler.png',
+  },
+] as const
 const manifestoLines = [
   ['Each', 'project', "we've", 'touched', 'holds'],
   ['sentimental', 'importance', 'and'],
@@ -18,6 +48,75 @@ const getViewportCoverage = (element: Element) => {
   return Math.max(0, Math.min(1, visibleHeight / viewportHeight))
 }
 
+type HeroIconProps = (typeof heroIcons)[number] & {
+  reducedMotion: boolean | null
+}
+
+function FloatingHeroIcon({
+  alt,
+  className,
+  delay,
+  reducedMotion,
+  src,
+}: HeroIconProps) {
+  const controls = useAnimationControls()
+  const returnTimeoutRef = useRef<number>(0)
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(returnTimeoutRef.current)
+    },
+    [],
+  )
+
+  return (
+    <motion.div
+      className={`hero-floating-icon ${className}`}
+      initial={reducedMotion ? false : { opacity: 0, scale: 0.42 }}
+      animate={
+        reducedMotion
+          ? { opacity: 1, scale: 1 }
+          : {
+              opacity: 1,
+              scale: 1,
+              transition: {
+                delay,
+                duration: 0.72,
+                ease: [0.16, 1, 0.3, 1],
+              },
+            }
+      }
+    >
+      <motion.img
+        src={src}
+        alt={alt}
+        draggable={false}
+        drag={reducedMotion ? false : true}
+        dragElastic={0.16}
+        dragMomentum={false}
+        animate={controls}
+        onDragStart={() => {
+          window.clearTimeout(returnTimeoutRef.current)
+          controls.stop()
+        }}
+        onDragEnd={() => {
+          returnTimeoutRef.current = window.setTimeout(() => {
+            void controls.start({
+              x: 0,
+              y: 0,
+              transition: {
+                duration: 4.5,
+                ease: [0.16, 1, 0.3, 1],
+              },
+            })
+          }, 2000)
+        }}
+        whileDrag={reducedMotion ? undefined : { scale: 1.08 }}
+      />
+    </motion.div>
+  )
+}
+
 function App() {
   const prefersReducedWordmarkMotion = useReducedMotion()
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -25,14 +124,21 @@ function App() {
   const gridRef = useRef<HTMLCanvasElement>(null)
   const heroSectionRef = useRef<HTMLElement>(null)
   const heroSlimePathRef = useRef<SVGPathElement>(null)
+  const loadingSlimePathRef = useRef<SVGPathElement>(null)
   const portraitGridRef = useRef<HTMLCanvasElement>(null)
   const portraitSectionRef = useRef<HTMLElement>(null)
   const closingGridRef = useRef<HTMLCanvasElement>(null)
+  const timelineGridRef = useRef<HTMLCanvasElement>(null)
   const closingSlimePathRef = useRef<SVGPathElement>(null)
   const closingSectionRef = useRef<HTMLElement>(null)
   const fourthSectionRef = useRef<HTMLElement>(null)
+  const timelinePanelRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const loadingTextOneRef = useRef<HTMLSpanElement>(null)
+  const loadingTextTwoRef = useRef<HTMLSpanElement>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoaderExiting, setIsLoaderExiting] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isWordmarkRevealed, setIsWordmarkRevealed] = useState(() => {
     if (
@@ -64,6 +170,19 @@ function App() {
 
     return false
   })
+  const [isTimelineRevealed, setIsTimelineRevealed] = useState(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return true
+    }
+
+    return false
+  })
+  const [expandedTimelineCard, setExpandedTimelineCard] = useState<
+    'baton' | 'fantacode' | 'bamboo' | null
+  >(null)
   const [heroText, setHeroText] = useState(() => {
     if (
       typeof window !== 'undefined' &&
@@ -74,6 +193,142 @@ function App() {
 
     return ''
   })
+
+  useEffect(() => {
+    const exitTimeout = window.setTimeout(() => {
+      setIsLoaderExiting(true)
+    }, loadingMorphDuration)
+    const loadingTimeout = window.setTimeout(() => {
+      setIsLoading(false)
+    }, loadingTotalDuration)
+
+    return () => {
+      window.clearTimeout(exitTimeout)
+      window.clearTimeout(loadingTimeout)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isLoading) {
+      return undefined
+    }
+
+    const textOne = loadingTextOneRef.current
+    const textTwo = loadingTextTwoRef.current
+
+    if (!textOne || !textTwo) {
+      return undefined
+    }
+
+    const segmentDuration = loadingMorphDuration / loadingTexts.length
+    const holdRatio = 0.34
+    const morphRatio = 0.5
+    const startTime = window.performance.now()
+    let frame = 0
+
+    const setReadable = (text: string) => {
+      textOne.textContent = text
+      textTwo.textContent = ''
+      textOne.style.filter = 'blur(0px)'
+      textTwo.style.filter = 'blur(100px)'
+      textOne.style.opacity = '100%'
+      textTwo.style.opacity = '0%'
+    }
+
+    const setMorph = (currentText: string, nextText: string, fraction: number) => {
+      const safeFraction = Math.max(0.001, Math.min(1, fraction))
+      const inverseFraction = Math.max(0.001, 1 - safeFraction)
+
+      textOne.textContent = currentText
+      textTwo.textContent = nextText
+      textTwo.style.filter = `blur(${Math.min(8 / safeFraction - 8, 100)}px)`
+      textTwo.style.opacity = `${Math.pow(safeFraction, 0.4) * 100}%`
+      textOne.style.filter = `blur(${Math.min(8 / inverseFraction - 8, 100)}px)`
+      textOne.style.opacity = `${Math.pow(inverseFraction, 0.4) * 100}%`
+    }
+
+    const renderMorph = (now: number) => {
+      const elapsed = Math.min(loadingMorphDuration - 1, now - startTime)
+      const segmentIndex = Math.min(
+        loadingTexts.length - 1,
+        Math.floor(elapsed / segmentDuration),
+      )
+      const localProgress = (elapsed - segmentIndex * segmentDuration) / segmentDuration
+      const currentText = loadingTexts[segmentIndex]
+      const nextText = loadingTexts[Math.min(segmentIndex + 1, loadingTexts.length - 1)]
+
+      if (segmentIndex === loadingTexts.length - 1 || localProgress < holdRatio) {
+        setReadable(currentText)
+      } else {
+        const morphProgress = Math.min(
+          1,
+          (localProgress - holdRatio) / morphRatio,
+        )
+        setMorph(currentText, nextText, morphProgress)
+      }
+
+      frame = window.requestAnimationFrame(renderMorph)
+    }
+
+    setReadable(loadingTexts[0])
+    frame = window.requestAnimationFrame(renderMorph)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [isLoading])
+
+  useEffect(() => {
+    if (!isLoaderExiting) {
+      loadingSlimePathRef.current?.setAttribute(
+        'd',
+        'M -0.02 0 H 1.02 V 1 H -0.02 Z',
+      )
+      return undefined
+    }
+
+    const loadingSlimePath = loadingSlimePathRef.current
+
+    if (!loadingSlimePath) {
+      return undefined
+    }
+
+    let frame = 0
+    const startTime = window.performance.now()
+
+    const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3)
+
+    const renderLoadingSlime = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / loadingExitDuration)
+      const easedProgress = easeOutCubic(progress)
+      const edge = 1 - easedProgress * 0.28
+      const shoulder = 1 - easedProgress * 0.13
+      const peak = 1 - easedProgress * 0.02
+      const clipLeft = -0.02
+      const clipRight = 1.02
+      const path = [
+        `M ${clipLeft} 0 H ${clipRight}`,
+        `V ${edge.toFixed(4)}`,
+        `C 0.9 ${edge.toFixed(4)}, 0.84 ${edge.toFixed(4)}, 0.76 ${shoulder.toFixed(4)}`,
+        `C 0.66 ${peak.toFixed(4)}, 0.6 ${peak.toFixed(4)}, 0.5 ${peak.toFixed(4)}`,
+        `C 0.4 ${peak.toFixed(4)}, 0.34 ${peak.toFixed(4)}, 0.24 ${shoulder.toFixed(4)}`,
+        `C 0.16 ${edge.toFixed(4)}, 0.1 ${edge.toFixed(4)}, ${clipLeft} ${edge.toFixed(4)}`,
+        'V 0 Z',
+      ].join(' ')
+
+      loadingSlimePath.setAttribute('d', path)
+
+      if (progress < 1) {
+        frame = window.requestAnimationFrame(renderLoadingSlime)
+      }
+    }
+
+    frame = window.requestAnimationFrame(renderLoadingSlime)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [isLoaderExiting])
 
   useEffect(() => {
     if ('scrollRestoration' in window.history) {
@@ -168,6 +423,46 @@ function App() {
       window.cancelAnimationFrame(frame)
     }
   }, [isIdCardRevealed])
+
+  useEffect(() => {
+    if (isTimelineRevealed) {
+      return undefined
+    }
+
+    const timelinePanel = timelinePanelRef.current
+
+    if (!timelinePanel) {
+      return undefined
+    }
+
+    let frame = 0
+
+    const revealWhenVisible = () => {
+      frame = 0
+
+      if (getViewportCoverage(timelinePanel) >= 0.48) {
+        setIsTimelineRevealed(true)
+      }
+    }
+
+    const scheduleRevealCheck = () => {
+      if (frame) {
+        return
+      }
+
+      frame = window.requestAnimationFrame(revealWhenVisible)
+    }
+
+    scheduleRevealCheck()
+    window.addEventListener('scroll', scheduleRevealCheck, { passive: true })
+    window.addEventListener('resize', scheduleRevealCheck)
+
+    return () => {
+      window.removeEventListener('scroll', scheduleRevealCheck)
+      window.removeEventListener('resize', scheduleRevealCheck)
+      window.cancelAnimationFrame(frame)
+    }
+  }, [isTimelineRevealed])
 
   useEffect(() => {
     const cursor = cursorRef.current
@@ -401,6 +696,7 @@ function App() {
     const closingSlimePath = closingSlimePathRef.current
     const fourthSection = fourthSectionRef.current
     const closingCanvas = closingGridRef.current
+    const timelineCanvas = timelineGridRef.current
     const prefersReducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches
@@ -415,6 +711,7 @@ function App() {
       !closingSlimePath ||
       !fourthSection ||
       !closingCanvas ||
+      !timelineCanvas ||
       prefersReducedMotion
     ) {
       return undefined
@@ -422,7 +719,8 @@ function App() {
 
     const context = canvas.getContext('2d')
     const closingContext = closingCanvas.getContext('2d')
-    if (!context || !closingContext) {
+    const timelineContext = timelineCanvas.getContext('2d')
+    if (!context || !closingContext || !timelineContext) {
       return undefined
     }
 
@@ -433,6 +731,8 @@ function App() {
     let canvasHeight = 0
     let closingCanvasWidth = 0
     let closingCanvasHeight = 0
+    let timelineCanvasWidth = 0
+    let timelineCanvasHeight = 0
     let pixelRatio = 1
     let gridX = window.innerWidth / 2
     let gridY = window.innerHeight / 2
@@ -442,13 +742,19 @@ function App() {
     let closingGridY = window.innerHeight / 2
     let targetClosingGridX = closingGridX
     let targetClosingGridY = closingGridY
+    let timelineGridX = window.innerWidth / 2
+    let timelineGridY = window.innerHeight / 2
+    let targetTimelineGridX = timelineGridX
+    let targetTimelineGridY = timelineGridY
     let closingPointerActive = false
+    let timelinePointerActive = false
     let pointerActive = false
     let lastPointerX = window.innerWidth / 2
     let lastPointerY = window.innerHeight / 2
     let hasPointer = false
     let portraitNeedsDraw = true
     let closingNeedsDraw = true
+    let timelineNeedsDraw = true
     let snapTimeout = 0
     let snapFrame = 0
     let isSnapping = false
@@ -468,17 +774,23 @@ function App() {
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect()
       const closingRect = closingCanvas.getBoundingClientRect()
+      const timelineRect = timelineCanvas.getBoundingClientRect()
       pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
       canvasWidth = Math.round(rect.width)
       canvasHeight = Math.round(rect.height)
       closingCanvasWidth = Math.round(closingRect.width)
       closingCanvasHeight = Math.round(closingRect.height)
+      timelineCanvasWidth = Math.round(timelineRect.width)
+      timelineCanvasHeight = Math.round(timelineRect.height)
       canvas.width = Math.round(canvasWidth * pixelRatio)
       canvas.height = Math.round(canvasHeight * pixelRatio)
       closingCanvas.width = Math.round(closingCanvasWidth * pixelRatio)
       closingCanvas.height = Math.round(closingCanvasHeight * pixelRatio)
+      timelineCanvas.width = Math.round(timelineCanvasWidth * pixelRatio)
+      timelineCanvas.height = Math.round(timelineCanvasHeight * pixelRatio)
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
       closingContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
+      timelineContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
     }
 
     const drawDots = (
@@ -627,29 +939,36 @@ function App() {
     const updateParallax = () => {
       const deckRect = deckStage.getBoundingClientRect()
       const viewportHeight = window.innerHeight || 1
+      const sectionScrollUnit =
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 5 ||
+        viewportHeight
       const heroProgress = Math.min(
         1,
-        Math.max(0, -deckRect.top / viewportHeight),
+        Math.max(0, -deckRect.top / sectionScrollUnit),
       )
       const closingProgress = Math.min(
         1,
-        Math.max(0, (-deckRect.top - viewportHeight) / viewportHeight),
+        Math.max(0, (-deckRect.top - sectionScrollUnit) / sectionScrollUnit),
       )
       const closingWordProgress = Math.min(
         1,
-        Math.max(0, (-deckRect.top - viewportHeight * 2) / viewportHeight),
+        Math.max(0, (-deckRect.top - sectionScrollUnit * 2) / sectionScrollUnit),
       )
       const fourthProgress = Math.min(
         1,
-        Math.max(0, (-deckRect.top - viewportHeight * 3) / viewportHeight),
+        Math.max(0, (-deckRect.top - sectionScrollUnit * 3) / sectionScrollUnit),
       )
       const timelineProgress = Math.min(
         1,
-        Math.max(0, (-deckRect.top - viewportHeight * 4) / viewportHeight),
+        Math.max(0, (-deckRect.top - sectionScrollUnit * 4) / sectionScrollUnit),
       )
+      const timelineSlideStart = 0.18
       const timelineSlideProgress = Math.min(
         1,
-        Math.max(0, (timelineProgress - 0.5) * 2),
+        Math.max(
+          0,
+          (timelineProgress - timelineSlideStart) / (1 - timelineSlideStart),
+        ),
       )
       const timelineLineProgress = timelineSlideProgress
       const heroDelta = heroProgress - lastHeroProgress
@@ -742,6 +1061,7 @@ function App() {
     const syncPointerTargets = () => {
       const rect = canvas.getBoundingClientRect()
       const closingRect = closingCanvas.getBoundingClientRect()
+      const timelineRect = timelineCanvas.getBoundingClientRect()
       const isInsideSection =
         lastPointerX >= rect.left &&
         lastPointerX <= rect.right &&
@@ -750,19 +1070,30 @@ function App() {
       const isInsideClosingSection =
         lastPointerX >= closingRect.left &&
         lastPointerX <= closingRect.right &&
-        lastPointerY >= closingRect.top &&
-        lastPointerY <= closingRect.bottom
+          lastPointerY >= closingRect.top &&
+          lastPointerY <= closingRect.bottom
+      const isInsideTimelineSection =
+        lastPointerX >= timelineRect.left &&
+        lastPointerX <= timelineRect.right &&
+        lastPointerY >= timelineRect.top &&
+        lastPointerY <= timelineRect.bottom
       const nextPointerActive =
         hasPointer && isInsideSection && getViewportCoverage(section) >= 0.7
       const nextClosingPointerActive =
         hasPointer &&
         isInsideClosingSection &&
         getViewportCoverage(closingSection) >= 0.7
+      const nextTimelinePointerActive =
+        hasPointer &&
+        isInsideTimelineSection &&
+        getViewportCoverage(timelineCanvas) >= 0.45
 
       targetGridX = lastPointerX - rect.left
       targetGridY = lastPointerY - rect.top
       targetClosingGridX = lastPointerX - closingRect.left
       targetClosingGridY = lastPointerY - closingRect.top
+      targetTimelineGridX = lastPointerX - timelineRect.left
+      targetTimelineGridY = lastPointerY - timelineRect.top
 
       if (pointerActive !== nextPointerActive) {
         portraitNeedsDraw = true
@@ -772,8 +1103,13 @@ function App() {
         closingNeedsDraw = true
       }
 
+      if (timelinePointerActive !== nextTimelinePointerActive) {
+        timelineNeedsDraw = true
+      }
+
       pointerActive = nextPointerActive
       closingPointerActive = nextClosingPointerActive
+      timelinePointerActive = nextTimelinePointerActive
     }
 
     const scheduleDotRender = () => {
@@ -802,16 +1138,19 @@ function App() {
 
     const snapToNearestSection = () => {
       const viewportHeight = window.innerHeight || 1
+      const sectionScrollUnit =
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 5 ||
+        viewportHeight
       const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
       const relativeScroll = window.scrollY - deckTop
-      const maxSnapDistance = viewportHeight * 0.18
+      const maxSnapDistance = sectionScrollUnit * 0.18
       const snapPoints = [
         0,
-        viewportHeight,
-        viewportHeight * 2,
-        viewportHeight * 3,
-        viewportHeight * 4,
-        viewportHeight * 5,
+        sectionScrollUnit,
+        sectionScrollUnit * 2,
+        sectionScrollUnit * 3,
+        sectionScrollUnit * 4,
+        sectionScrollUnit * 5,
       ]
       const nearestPoint = snapPoints.reduce((nearest, point) =>
         Math.abs(point - relativeScroll) < Math.abs(nearest - relativeScroll)
@@ -884,11 +1223,15 @@ function App() {
       const gridDeltaY = targetGridY - gridY
       const closingGridDeltaX = targetClosingGridX - closingGridX
       const closingGridDeltaY = targetClosingGridY - closingGridY
+      const timelineGridDeltaX = targetTimelineGridX - timelineGridX
+      const timelineGridDeltaY = targetTimelineGridY - timelineGridY
 
       gridX += (targetGridX - gridX) * 0.18
       gridY += (targetGridY - gridY) * 0.18
       closingGridX += (targetClosingGridX - closingGridX) * 0.18
       closingGridY += (targetClosingGridY - closingGridY) * 0.18
+      timelineGridX += (targetTimelineGridX - timelineGridX) * 0.18
+      timelineGridY += (targetTimelineGridY - timelineGridY) * 0.18
 
       const portraitMoving =
         Math.abs(gridDeltaX) > 0.08 ||
@@ -896,6 +1239,9 @@ function App() {
       const closingMoving =
         Math.abs(closingGridDeltaX) > 0.08 ||
         Math.abs(closingGridDeltaY) > 0.08
+      const timelineMoving =
+        Math.abs(timelineGridDeltaX) > 0.08 ||
+        Math.abs(timelineGridDeltaY) > 0.08
 
       if (portraitNeedsDraw || pointerActive) {
         drawDots(
@@ -923,9 +1269,23 @@ function App() {
         closingNeedsDraw = false
       }
 
+      if (timelineNeedsDraw || timelinePointerActive) {
+        drawDots(
+          timelineContext,
+          timelineCanvasWidth,
+          timelineCanvasHeight,
+          timelineGridX,
+          timelineGridY,
+          timelinePointerActive,
+          'rgb(21 19 15 / 0.17)',
+        )
+        timelineNeedsDraw = false
+      }
+
       if (
         (pointerActive && portraitMoving) ||
-        (closingPointerActive && closingMoving)
+        (closingPointerActive && closingMoving) ||
+        (timelinePointerActive && timelineMoving)
       ) {
         scheduleDotRender()
       }
@@ -949,6 +1309,10 @@ function App() {
         closingNeedsDraw = true
         closingPointerActive = false
       }
+      if (timelinePointerActive) {
+        timelineNeedsDraw = true
+        timelinePointerActive = false
+      }
       scheduleDotRender()
     }
 
@@ -958,6 +1322,7 @@ function App() {
       syncPointerTargets()
       portraitNeedsDraw = true
       closingNeedsDraw = true
+      timelineNeedsDraw = true
       scheduleDotRender()
     }
 
@@ -981,6 +1346,15 @@ function App() {
       false,
       'rgb(255 255 255 / 0.12)',
     )
+    drawDots(
+      timelineContext,
+      timelineCanvasWidth,
+      timelineCanvasHeight,
+      timelineGridX,
+      timelineGridY,
+      false,
+      'rgb(21 19 15 / 0.17)',
+    )
     window.addEventListener('pointermove', handlePointerMove, { passive: true })
     window.addEventListener('pointerleave', handlePointerLeave)
     window.addEventListener('scroll', handleDeckScroll, { passive: true })
@@ -999,14 +1373,18 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches
+	  useEffect(() => {
+	    const prefersReducedMotion = window.matchMedia(
+	      '(prefers-reduced-motion: reduce)',
+	    ).matches
 
-    if (prefersReducedMotion) {
-      return undefined
-    }
+	    if (isLoading) {
+	      return undefined
+	    }
+
+	    if (prefersReducedMotion) {
+	      return undefined
+	    }
 
     let timeout = 0
     let active = true
@@ -1049,7 +1427,7 @@ function App() {
       active = false
       window.clearTimeout(timeout)
     }
-  }, [])
+	  }, [isLoading])
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -1090,14 +1468,36 @@ function App() {
 
   return (
     <main className="app-shell">
+      {isLoading && (
+        <div
+          className={`loading-screen ${isLoaderExiting ? 'is-exiting' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="loading-words" aria-label="Namàsté Vanàkkam Swàgatham Welcome">
+            <span ref={loadingTextOneRef}>Namàsté</span>
+            <span ref={loadingTextTwoRef} />
+          </div>
+        </div>
+      )}
       <svg className="hero-slime-defs" aria-hidden="true">
         <defs>
+          <clipPath id="loading-slime-clip" clipPathUnits="objectBoundingBox">
+            <path ref={loadingSlimePathRef} d="M -0.02 0 H 1.02 V 1 H -0.02 Z" />
+          </clipPath>
           <clipPath id="hero-slime-clip" clipPathUnits="objectBoundingBox">
             <path ref={heroSlimePathRef} d="M -0.02 0 H 1.02 V 1 H -0.02 Z" />
           </clipPath>
           <clipPath id="closing-slime-clip" clipPathUnits="objectBoundingBox">
             <path ref={closingSlimePathRef} d="M -0.02 0 H 1.02 V 1 H -0.02 Z" />
           </clipPath>
+          <filter id="loading-threshold">
+            <feColorMatrix
+              in="SourceGraphic"
+              type="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 255 -140"
+            />
+          </filter>
         </defs>
       </svg>
       <div ref={cursorRef} className="smooth-cursor" aria-hidden="true" />
@@ -1108,6 +1508,17 @@ function App() {
           aria-label="Portfolio introduction"
         >
           <canvas ref={gridRef} className="dot-grid" aria-hidden="true" />
+          {isTypingComplete && (
+            <div className="hero-icon-field" aria-label="Floating design tools">
+              {heroIcons.map((icon) => (
+                <FloatingHeroIcon
+                  key={icon.src}
+                  {...icon}
+                  reducedMotion={prefersReducedWordmarkMotion}
+                />
+              ))}
+            </div>
+          )}
           <div className="header-frame">
             <div
               className={`hero-copy ${isTypingComplete ? 'is-complete' : ''}`}
@@ -1136,9 +1547,16 @@ function App() {
             aria-hidden="true"
         />
         <div className="portrait-parallax">
-          <p className="portrait-statement">
-            Product Designer • UI/UX Designer • UI Developer
-          </p>
+          <ul
+            className={`portrait-statement ${
+              isWordmarkRevealed ? 'is-revealed' : ''
+            }`}
+            aria-label="Design and development roles"
+          >
+            <li>Product Designer</li>
+            <li>UI/UX Designer</li>
+            <li>UI Developer</li>
+          </ul>
           <div className="portrait-wordmark-shell" aria-hidden="true">
             <motion.img
               className="portrait-wordmark"
@@ -1263,7 +1681,7 @@ function App() {
                     aria-label="Experience status"
                   >
                     <span className="experience-pill experience-pill-recent">
-                      Recently • Sept 2022 - April 2026
+                      Recently • 2022 - 2026
                     </span>
                     <span className="experience-pill experience-pill-open">
                       <span className="experience-live-dot" aria-hidden="true" />
@@ -1283,6 +1701,26 @@ function App() {
                   <motion.img
                     src="/raaho-id-card.png"
                     alt="Raaho ID card"
+                    draggable={false}
+                    drag={prefersReducedWordmarkMotion ? false : true}
+                    dragConstraints={{
+                      top: -18,
+                      right: 18,
+                      bottom: 22,
+                      left: -18,
+                    }}
+                    dragElastic={0.18}
+                    dragMomentum={false}
+                    dragSnapToOrigin
+                    whileDrag={{
+                      scale: 1.012,
+                      rotate: -0.8,
+                      transition: {
+                        type: 'spring',
+                        stiffness: 210,
+                        damping: 22,
+                      },
+                    }}
                     initial={
                       prefersReducedWordmarkMotion
                         ? false
@@ -1338,14 +1776,20 @@ function App() {
               </div>
             </div>
             <div className="experience-slide experience-slide-timeline">
-              <div className="timeline-panel" aria-label="Experience timeline">
+              <canvas
+                ref={timelineGridRef}
+                className="timeline-dot-grid"
+                aria-hidden="true"
+              />
+              <div
+                ref={timelinePanelRef}
+                className={`timeline-panel ${
+                  isTimelineRevealed ? 'is-revealed' : ''
+                }`}
+                aria-label="Previous contributions"
+              >
                 <div className="timeline-intro">
-                  <span>Timeline</span>
-                  <h2>Experience Map</h2>
-                  <p>
-                    A scroll-led view of the roles, teams, and product systems
-                    I have helped shape across design and development.
-                  </p>
+                  <h2>Previous Contributions</h2>
                 </div>
                 <ol className="timeline-rail">
                   <li
@@ -1358,7 +1802,16 @@ function App() {
                     }
                   >
                     <span className="timeline-dot" aria-hidden="true" />
-                    <div className="timeline-entry">
+                    <div
+                      className={`timeline-entry timeline-entry-baton ${
+                        expandedTimelineCard === 'baton' ? 'is-expanded' : ''
+                      }`}
+                      onClick={() =>
+                        setExpandedTimelineCard((current) =>
+                          current === 'baton' ? null : 'baton',
+                        )
+                      }
+                    >
                       <span className="timeline-duration">2022</span>
                       <a
                         className="timeline-logo timeline-logo-baton"
@@ -1386,7 +1839,18 @@ function App() {
                     }
                   >
                     <span className="timeline-dot" aria-hidden="true" />
-                    <div className="timeline-entry">
+                    <div
+                      className={`timeline-entry timeline-entry-fantacode ${
+                        expandedTimelineCard === 'fantacode'
+                          ? 'is-expanded'
+                          : ''
+                      }`}
+                      onClick={() =>
+                        setExpandedTimelineCard((current) =>
+                          current === 'fantacode' ? null : 'fantacode',
+                        )
+                      }
+                    >
                       <span className="timeline-duration">2018 - 2019</span>
                       <a
                         className="timeline-logo"
@@ -1414,10 +1878,19 @@ function App() {
                     }
                   >
                     <span className="timeline-dot" aria-hidden="true" />
-                    <div className="timeline-entry">
+                    <div
+                      className={`timeline-entry timeline-entry-bamboo ${
+                        expandedTimelineCard === 'bamboo' ? 'is-expanded' : ''
+                      }`}
+                      onClick={() =>
+                        setExpandedTimelineCard((current) =>
+                          current === 'bamboo' ? null : 'bamboo',
+                        )
+                      }
+                    >
                       <span className="timeline-duration">2017 - 2018</span>
-                      <div className="timeline-logo timeline-logo-text">
-                        Bamboo
+                      <div className="timeline-logo timeline-logo-bamboo">
+                        <img src="/bamboo-logo.png" alt="Bamboo" />
                       </div>
                       <strong>Mobile App Developer</strong>
                       <p>
@@ -1433,6 +1906,7 @@ function App() {
           </div>
         </section>
       </div>
+      <section className="sixth-section" aria-label="Blank section" />
       <div
         ref={menuRef}
         className={`menu-cta ${isMenuOpen ? 'is-open' : ''}`}
