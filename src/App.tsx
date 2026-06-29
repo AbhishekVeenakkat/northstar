@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import './App.css'
 
 const introText = 'ux by abhi'
@@ -18,6 +19,7 @@ const getViewportCoverage = (element: Element) => {
 }
 
 function App() {
+  const prefersReducedWordmarkMotion = useReducedMotion()
   const cursorRef = useRef<HTMLDivElement>(null)
   const deckStageRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLCanvasElement>(null)
@@ -43,6 +45,16 @@ function App() {
     return false
   })
   const [isTypingComplete, setIsTypingComplete] = useState(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return true
+    }
+
+    return false
+  })
+  const [isIdCardRevealed, setIsIdCardRevealed] = useState(() => {
     if (
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -116,6 +128,46 @@ function App() {
       window.cancelAnimationFrame(frame)
     }
   }, [isWordmarkRevealed])
+
+  useEffect(() => {
+    if (isIdCardRevealed) {
+      return undefined
+    }
+
+    const fourthSection = fourthSectionRef.current
+
+    if (!fourthSection) {
+      return undefined
+    }
+
+    let frame = 0
+
+    const revealWhenVisible = () => {
+      frame = 0
+
+      if (getViewportCoverage(fourthSection) >= 0.82) {
+        setIsIdCardRevealed(true)
+      }
+    }
+
+    const scheduleRevealCheck = () => {
+      if (frame) {
+        return
+      }
+
+      frame = window.requestAnimationFrame(revealWhenVisible)
+    }
+
+    scheduleRevealCheck()
+    window.addEventListener('scroll', scheduleRevealCheck, { passive: true })
+    window.addEventListener('resize', scheduleRevealCheck)
+
+    return () => {
+      window.removeEventListener('scroll', scheduleRevealCheck)
+      window.removeEventListener('resize', scheduleRevealCheck)
+      window.cancelAnimationFrame(frame)
+    }
+  }, [isIdCardRevealed])
 
   useEffect(() => {
     const cursor = cursorRef.current
@@ -274,16 +326,20 @@ function App() {
           menuRef.current?.contains(target) &&
           menuRef.current.classList.contains('is-open'),
       )
+      const isOverNativePointer = Boolean(
+        target instanceof Element &&
+          target.closest('a, button, [role="button"], input, textarea, select'),
+      )
 
       targetCursorX = event.clientX
       targetCursorY = event.clientY
       lastPointerX = event.clientX
       lastPointerY = event.clientY
-      pointerActive = !isNearViewportEdge
+      pointerActive = !isNearViewportEdge && !isOverNativePointer
       syncGridTarget()
 
       if (cursor) {
-        if (isNearViewportEdge) {
+        if (isNearViewportEdge || isOverNativePointer) {
           cursor.style.opacity = '0'
         }
 
@@ -394,6 +450,8 @@ function App() {
     let portraitNeedsDraw = true
     let closingNeedsDraw = true
     let snapTimeout = 0
+    let snapFrame = 0
+    let isSnapping = false
     let lastHeroProgress = 0
     let hasMeasuredHeroProgress = false
     let lastClosingProgress = 0
@@ -459,13 +517,15 @@ function App() {
     const setHeroSlimePath = (amount: number) => {
       const strength = Math.min(1, Math.abs(amount))
       const isScrollDownReaction = amount >= 0
+      const edgePull = 0.24
+      const shoulderPull = 0.1
       const slimeEdge = isScrollDownReaction
-        ? 1 - strength * 0.42
+        ? 1 - strength * edgePull
         : 1 - strength * 0.02
-      const slimeShoulder = 1 - strength * 0.18
+      const slimeShoulder = 1 - strength * shoulderPull
       const slimePeak = isScrollDownReaction
         ? 1 - strength * 0.02
-        : 1 - strength * 0.42
+        : 1 - strength * edgePull
       const clipLeft = -0.02
       const clipRight = 1.02
       const slimePath = [
@@ -484,22 +544,24 @@ function App() {
     const setClosingSlimePath = (topAmount: number, bottomAmount: number) => {
       const topStrength = Math.min(1, Math.abs(topAmount))
       const isTopScrollDownReaction = topAmount >= 0
+      const edgePull = 0.24
+      const shoulderPull = 0.1
       const topEdge = isTopScrollDownReaction
         ? topStrength * 0.02
-        : topStrength * 0.42
-      const topShoulder = topStrength * 0.18
+        : topStrength * edgePull
+      const topShoulder = topStrength * shoulderPull
       const topPeak = isTopScrollDownReaction
-        ? topStrength * 0.42
+        ? topStrength * edgePull
         : topStrength * 0.02
       const bottomStrength = Math.min(1, Math.abs(bottomAmount))
       const isBottomScrollDownReaction = bottomAmount >= 0
       const bottomEdge = isBottomScrollDownReaction
-        ? 1 - bottomStrength * 0.42
+        ? 1 - bottomStrength * edgePull
         : 1 - bottomStrength * 0.02
-      const bottomShoulder = 1 - bottomStrength * 0.18
+      const bottomShoulder = 1 - bottomStrength * shoulderPull
       const bottomPeak = isBottomScrollDownReaction
         ? 1 - bottomStrength * 0.02
-        : 1 - bottomStrength * 0.42
+        : 1 - bottomStrength * edgePull
       const clipLeft = -0.02
       const clipRight = 1.02
       const slimePath = [
@@ -529,14 +591,14 @@ function App() {
 
     const renderSlime = () => {
       slimeFrame = 0
-      slimeTarget *= 0.82
-      slimePosition += (slimeTarget - slimePosition) * 0.14
-      closingSlimeTarget *= 0.82
+      slimeTarget *= 0.72
+      slimePosition += (slimeTarget - slimePosition) * 0.22
+      closingSlimeTarget *= 0.72
       closingSlimePosition +=
-        (closingSlimeTarget - closingSlimePosition) * 0.14
-      closingBottomSlimeTarget *= 0.82
+        (closingSlimeTarget - closingSlimePosition) * 0.22
+      closingBottomSlimeTarget *= 0.72
       closingBottomSlimePosition +=
-        (closingBottomSlimeTarget - closingBottomSlimePosition) * 0.14
+        (closingBottomSlimeTarget - closingBottomSlimePosition) * 0.22
 
       if (
         Math.abs(slimePosition) < 0.002 &&
@@ -581,6 +643,15 @@ function App() {
         1,
         Math.max(0, (-deckRect.top - viewportHeight * 3) / viewportHeight),
       )
+      const timelineProgress = Math.min(
+        1,
+        Math.max(0, (-deckRect.top - viewportHeight * 4) / viewportHeight),
+      )
+      const timelineSlideProgress = Math.min(
+        1,
+        Math.max(0, (timelineProgress - 0.5) * 2),
+      )
+      const timelineLineProgress = timelineSlideProgress
       const heroDelta = heroProgress - lastHeroProgress
       const closingDelta = closingProgress - lastClosingProgress
       const fourthDelta = fourthProgress - lastFourthProgress
@@ -591,7 +662,7 @@ function App() {
         heroProgress > 0.01 &&
         heroProgress < 0.99
       ) {
-        slimeTarget = Math.max(-1, Math.min(1, heroDelta * -46.4))
+        slimeTarget = Math.max(-0.72, Math.min(0.72, heroDelta * -28))
         scheduleSlimeRender()
       }
 
@@ -601,7 +672,7 @@ function App() {
         closingProgress > 0.01 &&
         closingProgress < 0.99
       ) {
-        closingSlimeTarget = Math.max(-1, Math.min(1, closingDelta * -46.4))
+        closingSlimeTarget = Math.max(-0.72, Math.min(0.72, closingDelta * -28))
         scheduleSlimeRender()
       }
 
@@ -612,8 +683,8 @@ function App() {
         fourthProgress < 0.99
       ) {
         closingBottomSlimeTarget = Math.max(
-          -1,
-          Math.min(1, fourthDelta * -46.4),
+          -0.72,
+          Math.min(0.72, fourthDelta * -28),
         )
         scheduleSlimeRender()
       }
@@ -650,6 +721,22 @@ function App() {
         '--fourth-underlay-progress',
         fourthProgress > 0.001 ? '1' : '0',
       )
+      fourthSection.style.setProperty(
+        '--experience-timeline-progress',
+        timelineSlideProgress.toString(),
+      )
+      fourthSection.style.setProperty(
+        '--timeline-continuity-progress',
+        timelineProgress.toString(),
+      )
+      fourthSection.style.setProperty(
+        '--timeline-line-progress',
+        timelineLineProgress.toString(),
+      )
+
+      if (!isIdCardRevealed && fourthProgress >= 0.75) {
+        setIsIdCardRevealed(true)
+      }
     }
 
     const syncPointerTargets = () => {
@@ -718,7 +805,14 @@ function App() {
       const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
       const relativeScroll = window.scrollY - deckTop
       const maxSnapDistance = viewportHeight * 0.18
-      const snapPoints = [0, viewportHeight, viewportHeight * 2, viewportHeight * 3]
+      const snapPoints = [
+        0,
+        viewportHeight,
+        viewportHeight * 2,
+        viewportHeight * 3,
+        viewportHeight * 4,
+        viewportHeight * 5,
+      ]
       const nearestPoint = snapPoints.reduce((nearest, point) =>
         Math.abs(point - relativeScroll) < Math.abs(nearest - relativeScroll)
           ? point
@@ -729,19 +823,58 @@ function App() {
         return
       }
 
-      window.scrollTo({
-        top: deckTop + nearestPoint,
-        behavior: 'smooth',
-      })
+      const targetScroll = deckTop + nearestPoint
+      const startScroll = window.scrollY
+      const distance = targetScroll - startScroll
+
+      if (Math.abs(distance) < 2) {
+        return
+      }
+
+      window.cancelAnimationFrame(snapFrame)
+      isSnapping = true
+
+      const duration = Math.min(
+        820,
+        Math.max(460, Math.abs(distance) * 0.9),
+      )
+      const startTime = window.performance.now()
+      const easeInOutCubic = (progress: number) =>
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2
+
+      const animateSnap = (now: number) => {
+        const progress = Math.min(1, (now - startTime) / duration)
+        const easedProgress = easeInOutCubic(progress)
+
+        window.scrollTo(0, startScroll + distance * easedProgress)
+        scheduleParallaxUpdate()
+
+        if (progress < 1) {
+          snapFrame = window.requestAnimationFrame(animateSnap)
+          return
+        }
+
+        snapFrame = 0
+        isSnapping = false
+      }
+
+      snapFrame = window.requestAnimationFrame(animateSnap)
     }
 
     const scheduleSectionSnap = () => {
       window.clearTimeout(snapTimeout)
-      snapTimeout = window.setTimeout(snapToNearestSection, 120)
+      snapTimeout = window.setTimeout(snapToNearestSection, 180)
     }
 
     const handleDeckScroll = () => {
       scheduleParallaxUpdate()
+
+      if (isSnapping) {
+        return
+      }
+
       scheduleSectionSnap()
     }
 
@@ -862,6 +995,7 @@ function App() {
       window.cancelAnimationFrame(animationFrame)
       window.cancelAnimationFrame(parallaxFrame)
       window.cancelAnimationFrame(slimeFrame)
+      window.cancelAnimationFrame(snapFrame)
     }
   }, [])
 
@@ -1005,14 +1139,62 @@ function App() {
           <p className="portrait-statement">
             Product Designer • UI/UX Designer • UI Developer
           </p>
-          <img
-            className={`portrait-wordmark ${
-              isWordmarkRevealed ? 'is-revealed' : ''
-            }`}
-            src="/uxbyabhi.svg"
-            alt=""
-            aria-hidden="true"
-          />
+          <div className="portrait-wordmark-shell" aria-hidden="true">
+            <motion.img
+              className="portrait-wordmark"
+              src="/uxbyabhi.svg"
+              alt=""
+              initial={
+                prefersReducedWordmarkMotion
+                  ? false
+                  : {
+                      clipPath: 'ellipse(0% 42% at 50% 50%)',
+                      filter: 'blur(12px)',
+                      opacity: 0,
+                      scale: 0.92,
+                    }
+              }
+              animate={
+                isWordmarkRevealed
+                  ? {
+                      clipPath: 'ellipse(100% 100% at 50% 50%)',
+                      filter: 'blur(0px)',
+                      opacity: 0.86,
+                      scale: 1,
+                    }
+                  : {
+                      clipPath: 'ellipse(0% 42% at 50% 50%)',
+                      filter: 'blur(12px)',
+                      opacity: 0,
+                      scale: 0.92,
+                    }
+              }
+              transition={
+                prefersReducedWordmarkMotion
+                  ? { duration: 0 }
+                  : {
+                      clipPath: {
+                        duration: 1.05,
+                        ease: [0.16, 1, 0.3, 1],
+                      },
+                      filter: {
+                        duration: 0.72,
+                        ease: [0.16, 1, 0.3, 1],
+                      },
+                      opacity: {
+                        duration: 0.42,
+                        ease: 'easeOut',
+                      },
+                      scale: {
+                        type: 'spring',
+                        stiffness: 170,
+                        damping: 22,
+                        mass: 0.9,
+                      },
+                    }
+              }
+            />
+          </div>
           <img
             className="portrait-image"
             src="/abhishek-portrait.png"
@@ -1066,8 +1248,190 @@ function App() {
         <section
           ref={fourthSectionRef}
           className="fourth-section"
-          aria-label="Selected work"
-        />
+          aria-label="Experience"
+        >
+          <div className="experience-track">
+            <div className="timeline-continuity-line" aria-hidden="true">
+              <span className="timeline-continuity-line__base" />
+              <span className="timeline-continuity-line__active" />
+            </div>
+            <div className="experience-slide">
+              <div className="experience-panel">
+                <div className="experience-current">
+                  <div
+                    className="experience-pills"
+                    aria-label="Experience status"
+                  >
+                    <span className="experience-pill experience-pill-recent">
+                      Recently • Sept 2022 - April 2026
+                    </span>
+                    <span className="experience-pill experience-pill-open">
+                      <span className="experience-live-dot" aria-hidden="true" />
+                      Open to work
+                    </span>
+                  </div>
+                  <h2>UX Engineer</h2>
+                  <p className="experience-company">
+                    Raaho - Quickdigital Technologies Pvt. Ltd.
+                  </p>
+                  <p>
+                    At Raaho, I led web development across internal operations
+                    suites and customer-facing product experiences.
+                  </p>
+                </div>
+                <div className="experience-id-card" aria-label="Raaho ID card">
+                  <motion.img
+                    src="/raaho-id-card.png"
+                    alt="Raaho ID card"
+                    initial={
+                      prefersReducedWordmarkMotion
+                        ? false
+                        : {
+                            opacity: 0,
+                            rotate: -5,
+                            y: '-78vh',
+                          }
+                    }
+                    animate={
+                      isIdCardRevealed
+                        ? prefersReducedWordmarkMotion
+                          ? {
+                              opacity: 1,
+                              rotate: -1.5,
+                              y: 0,
+                            }
+                          : {
+                              opacity: 1,
+                              rotate: [-1.5, -0.7, -1.9, -1.5],
+                              y: 0,
+                            }
+                        : {
+                            opacity: 0,
+                            rotate: -5,
+                            y: '-78vh',
+                          }
+                    }
+                    transition={
+                      prefersReducedWordmarkMotion
+                        ? { duration: 0 }
+                        : {
+                            opacity: {
+                              duration: 0.2,
+                              ease: 'easeOut',
+                            },
+                            rotate: {
+                              duration: 4.8,
+                              ease: 'easeInOut',
+                              repeat: Infinity,
+                              repeatDelay: 0.9,
+                            },
+                            y: {
+                              type: 'spring',
+                              stiffness: 78,
+                              damping: 16,
+                              mass: 1,
+                            },
+                          }
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="experience-slide experience-slide-timeline">
+              <div className="timeline-panel" aria-label="Experience timeline">
+                <div className="timeline-intro">
+                  <span>Timeline</span>
+                  <h2>Experience Map</h2>
+                  <p>
+                    A scroll-led view of the roles, teams, and product systems
+                    I have helped shape across design and development.
+                  </p>
+                </div>
+                <ol className="timeline-rail">
+                  <li
+                    className="timeline-item timeline-item-top"
+                    style={
+                      {
+                        '--timeline-item-index': 0,
+                        '--timeline-item-x': '18%',
+                      } as CSSProperties
+                    }
+                  >
+                    <span className="timeline-dot" aria-hidden="true" />
+                    <div className="timeline-entry">
+                      <span className="timeline-duration">2022</span>
+                      <a
+                        className="timeline-logo timeline-logo-baton"
+                        href="https://batonsystems.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img src="/baton-logo.png" alt="Baton" />
+                      </a>
+                      <strong>Developer</strong>
+                      <p>
+                        Designed and developed user interfaces for fintech
+                        platform. Collaborated with cross-functional teams to
+                        deliver seamless experiences.
+                      </p>
+                    </div>
+                  </li>
+                  <li
+                    className="timeline-item timeline-item-bottom"
+                    style={
+                      {
+                        '--timeline-item-index': 1,
+                        '--timeline-item-x': '50%',
+                      } as CSSProperties
+                    }
+                  >
+                    <span className="timeline-dot" aria-hidden="true" />
+                    <div className="timeline-entry">
+                      <span className="timeline-duration">2018 - 2019</span>
+                      <a
+                        className="timeline-logo"
+                        href="https://fantacode.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <img src="/fantacode-logo.avif" alt="FantaCode" />
+                      </a>
+                      <strong>UI/UX Designer</strong>
+                      <p>
+                        Created design systems and interactive prototypes for
+                        web applications. Worked on multiple client projects
+                        from concept to launch.
+                      </p>
+                    </div>
+                  </li>
+                  <li
+                    className="timeline-item timeline-item-top"
+                    style={
+                      {
+                        '--timeline-item-index': 2,
+                        '--timeline-item-x': '82%',
+                      } as CSSProperties
+                    }
+                  >
+                    <span className="timeline-dot" aria-hidden="true" />
+                    <div className="timeline-entry">
+                      <span className="timeline-duration">2017 - 2018</span>
+                      <div className="timeline-logo timeline-logo-text">
+                        Bamboo
+                      </div>
+                      <strong>Mobile App Developer</strong>
+                      <p>
+                        Designed user interfaces and marketing materials.
+                        Learned fundamentals of product design and
+                        user-centered development.
+                      </p>
+                    </div>
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
       <div
         ref={menuRef}
