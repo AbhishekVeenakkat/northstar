@@ -32,6 +32,16 @@ function App() {
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isWordmarkRevealed, setIsWordmarkRevealed] = useState(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return true
+    }
+
+    return false
+  })
   const [isTypingComplete, setIsTypingComplete] = useState(() => {
     if (
       typeof window !== 'undefined' &&
@@ -60,6 +70,52 @@ function App() {
 
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }, [])
+
+  useEffect(() => {
+    if (isWordmarkRevealed) {
+      return undefined
+    }
+
+    const deckStage = deckStageRef.current
+    const portraitSection = portraitSectionRef.current
+
+    if (!deckStage || !portraitSection) {
+      return undefined
+    }
+
+    let frame = 0
+
+    const revealWhenLoaded = () => {
+      frame = 0
+      const viewportHeight = window.innerHeight || 1
+      const deckProgress = Math.max(
+        0,
+        -deckStage.getBoundingClientRect().top / viewportHeight,
+      )
+
+      if (deckProgress >= 0.99 && getViewportCoverage(portraitSection) >= 0.82) {
+        setIsWordmarkRevealed(true)
+      }
+    }
+
+    const scheduleRevealCheck = () => {
+      if (frame) {
+        return
+      }
+
+      frame = window.requestAnimationFrame(revealWhenLoaded)
+    }
+
+    scheduleRevealCheck()
+    window.addEventListener('scroll', scheduleRevealCheck, { passive: true })
+    window.addEventListener('resize', scheduleRevealCheck)
+
+    return () => {
+      window.removeEventListener('scroll', scheduleRevealCheck)
+      window.removeEventListener('resize', scheduleRevealCheck)
+      window.cancelAnimationFrame(frame)
+    }
+  }, [isWordmarkRevealed])
 
   useEffect(() => {
     const cursor = cursorRef.current
@@ -207,6 +263,12 @@ function App() {
 
     const handlePointerMove = (event: PointerEvent) => {
       const target = event.target
+      const cursorEdgeInset = 14
+      const isNearViewportEdge =
+        event.clientX <= cursorEdgeInset ||
+        event.clientY <= cursorEdgeInset ||
+        event.clientX >= window.innerWidth - cursorEdgeInset ||
+        event.clientY >= window.innerHeight - cursorEdgeInset
       const isOverOpenMenu = Boolean(
         target instanceof Node &&
           menuRef.current?.contains(target) &&
@@ -217,10 +279,14 @@ function App() {
       targetCursorY = event.clientY
       lastPointerX = event.clientX
       lastPointerY = event.clientY
+      pointerActive = !isNearViewportEdge
       syncGridTarget()
-      pointerActive = true
 
       if (cursor) {
+        if (isNearViewportEdge) {
+          cursor.style.opacity = '0'
+        }
+
         cursor.style.background = isOverOpenMenu ? '#f3c623' : '#1677ff'
       }
 
@@ -400,13 +466,15 @@ function App() {
       const slimePeak = isScrollDownReaction
         ? 1 - strength * 0.02
         : 1 - strength * 0.42
+      const clipLeft = -0.02
+      const clipRight = 1.02
       const slimePath = [
-        'M 0 0 H 1',
+        `M ${clipLeft} 0 H ${clipRight}`,
         `V ${slimeEdge.toFixed(4)}`,
         `C 0.9 ${slimeEdge.toFixed(4)}, 0.84 ${slimeEdge.toFixed(4)}, 0.76 ${slimeShoulder.toFixed(4)}`,
         `C 0.66 ${slimePeak.toFixed(4)}, 0.6 ${slimePeak.toFixed(4)}, 0.5 ${slimePeak.toFixed(4)}`,
         `C 0.4 ${slimePeak.toFixed(4)}, 0.34 ${slimePeak.toFixed(4)}, 0.24 ${slimeShoulder.toFixed(4)}`,
-        `C 0.16 ${slimeEdge.toFixed(4)}, 0.1 ${slimeEdge.toFixed(4)}, 0 ${slimeEdge.toFixed(4)}`,
+        `C 0.16 ${slimeEdge.toFixed(4)}, 0.1 ${slimeEdge.toFixed(4)}, ${clipLeft} ${slimeEdge.toFixed(4)}`,
         'V 0 Z',
       ].join(' ')
 
@@ -432,17 +500,19 @@ function App() {
       const bottomPeak = isBottomScrollDownReaction
         ? 1 - bottomStrength * 0.02
         : 1 - bottomStrength * 0.42
+      const clipLeft = -0.02
+      const clipRight = 1.02
       const slimePath = [
-        `M 0 ${topEdge.toFixed(4)}`,
+        `M ${clipLeft} ${topEdge.toFixed(4)}`,
         `C 0.1 ${topEdge.toFixed(4)}, 0.16 ${topEdge.toFixed(4)}, 0.24 ${topShoulder.toFixed(4)}`,
         `C 0.34 ${topPeak.toFixed(4)}, 0.4 ${topPeak.toFixed(4)}, 0.5 ${topPeak.toFixed(4)}`,
         `C 0.6 ${topPeak.toFixed(4)}, 0.66 ${topPeak.toFixed(4)}, 0.76 ${topShoulder.toFixed(4)}`,
-        `C 0.84 ${topEdge.toFixed(4)}, 0.9 ${topEdge.toFixed(4)}, 1 ${topEdge.toFixed(4)}`,
+        `C 0.84 ${topEdge.toFixed(4)}, 0.9 ${topEdge.toFixed(4)}, ${clipRight} ${topEdge.toFixed(4)}`,
         `V ${bottomEdge.toFixed(4)}`,
         `C 0.9 ${bottomEdge.toFixed(4)}, 0.84 ${bottomEdge.toFixed(4)}, 0.76 ${bottomShoulder.toFixed(4)}`,
         `C 0.66 ${bottomPeak.toFixed(4)}, 0.6 ${bottomPeak.toFixed(4)}, 0.5 ${bottomPeak.toFixed(4)}`,
         `C 0.4 ${bottomPeak.toFixed(4)}, 0.34 ${bottomPeak.toFixed(4)}, 0.24 ${bottomShoulder.toFixed(4)}`,
-        `C 0.16 ${bottomEdge.toFixed(4)}, 0.1 ${bottomEdge.toFixed(4)}, 0 ${bottomEdge.toFixed(4)}`,
+        `C 0.16 ${bottomEdge.toFixed(4)}, 0.1 ${bottomEdge.toFixed(4)}, ${clipLeft} ${bottomEdge.toFixed(4)}`,
         'Z',
       ].join(' ')
 
@@ -889,10 +959,10 @@ function App() {
       <svg className="hero-slime-defs" aria-hidden="true">
         <defs>
           <clipPath id="hero-slime-clip" clipPathUnits="objectBoundingBox">
-            <path ref={heroSlimePathRef} d="M 0 0 H 1 V 1 H 0 Z" />
+            <path ref={heroSlimePathRef} d="M -0.02 0 H 1.02 V 1 H -0.02 Z" />
           </clipPath>
           <clipPath id="closing-slime-clip" clipPathUnits="objectBoundingBox">
-            <path ref={closingSlimePathRef} d="M 0 0 H 1 V 1 H 0 Z" />
+            <path ref={closingSlimePathRef} d="M -0.02 0 H 1.02 V 1 H -0.02 Z" />
           </clipPath>
         </defs>
       </svg>
@@ -935,6 +1005,14 @@ function App() {
           <p className="portrait-statement">
             Product Designer • UI/UX Designer • UI Developer
           </p>
+          <img
+            className={`portrait-wordmark ${
+              isWordmarkRevealed ? 'is-revealed' : ''
+            }`}
+            src="/uxbyabhi.svg"
+            alt=""
+            aria-hidden="true"
+          />
           <img
             className="portrait-image"
             src="/abhishek-portrait.png"

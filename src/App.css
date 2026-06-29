@@ -23,12 +23,12 @@
 .header-section {
   --hero-scroll-progress: 0;
   position: sticky;
-  top: -1px;
-  left: -2px;
+  top: -4px;
+  left: -12px;
   isolation: isolate;
   z-index: 2;
-  width: calc(100% + 4px);
-  min-height: 100svh;
+  width: calc(100% + 24px);
+  min-height: calc(100svh + 8px);
   overflow: hidden;
   background: #f5efe6;
   transform: translate3d(
@@ -526,6 +526,58 @@
   will-change: transform, opacity;
 }
 
+.portrait-wordmark {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(160px, 24svh, 260px);
+  z-index: 0;
+  display: block;
+  width: 80vw;
+  max-width: none;
+  height: auto;
+  opacity: 0;
+  filter: blur(12px);
+  pointer-events: none;
+  transform: translateX(-50%) scale(0.92);
+  transform-origin: 50% 50%;
+  clip-path: ellipse(0% 42% at 50% 50%);
+  will-change: clip-path, filter, opacity, transform;
+}
+
+.portrait-wordmark.is-revealed {
+  animation: portrait-wordmark-bloom 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes portrait-wordmark-bloom {
+  0% {
+    opacity: 0;
+    clip-path: ellipse(0% 42% at 50% 50%);
+    filter: blur(12px);
+    transform: translateX(-50%) scale(0.92);
+  }
+
+  34% {
+    opacity: 0.72;
+    clip-path: ellipse(34% 48% at 50% 50%);
+    filter: blur(5px);
+    transform: translateX(-50%) scale(0.98);
+  }
+
+  68% {
+    opacity: 0.88;
+    clip-path: ellipse(74% 64% at 50% 50%);
+    filter: blur(1px);
+    transform: translateX(-50%) scale(1.015);
+  }
+
+  100% {
+    opacity: 0.86;
+    clip-path: ellipse(100% 100% at 50% 50%);
+    filter: blur(0);
+    transform: translateX(-50%) scale(1);
+  }
+}
+
 .portrait-image {
   position: relative;
   z-index: 1;
@@ -553,13 +605,13 @@
   --closing-exit-progress: 0;
   --closing-word-progress: 0;
   position: sticky;
-  top: -1px;
-  left: -2px;
+  top: -4px;
+  left: -12px;
   z-index: 3;
   display: grid;
   place-items: center;
-  width: calc(100% + 4px);
-  min-height: calc(100svh + 2px);
+  width: calc(100% + 24px);
+  min-height: calc(100svh + 8px);
   margin-top: -100svh;
   overflow: hidden;
   background: #252525;
@@ -788,6 +840,47 @@
     );
   }
 
+  .portrait-wordmark {
+    bottom: auto;
+    top: 50%;
+    width: 86vw;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+
+  .portrait-wordmark.is-revealed {
+    animation-name: portrait-wordmark-bloom-mobile;
+  }
+
+  @keyframes portrait-wordmark-bloom-mobile {
+    0% {
+      opacity: 0;
+      clip-path: ellipse(0% 42% at 50% 50%);
+      filter: blur(12px);
+      transform: translate(-50%, -50%) scale(0.92);
+    }
+
+    34% {
+      opacity: 0.72;
+      clip-path: ellipse(34% 48% at 50% 50%);
+      filter: blur(5px);
+      transform: translate(-50%, -50%) scale(0.98);
+    }
+
+    68% {
+      opacity: 0.88;
+      clip-path: ellipse(74% 64% at 50% 50%);
+      filter: blur(1px);
+      transform: translate(-50%, -50%) scale(1.015);
+    }
+
+    100% {
+      opacity: 0.86;
+      clip-path: ellipse(100% 100% at 50% 50%);
+      filter: blur(0);
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
   .portrait-image {
     align-self: end;
     justify-self: center;
@@ -827,10 +920,27 @@
   .portrait-parallax,
   .portrait-section,
   .portrait-image,
+  .portrait-wordmark,
   .portrait-statement,
   .closing-section,
   .header-frame {
     transform: none;
+  }
+
+  .portrait-wordmark,
+  .portrait-wordmark.is-revealed {
+    animation: none;
+    clip-path: ellipse(100% 100% at 50% 50%);
+    filter: none;
+    opacity: 0.86;
+    transform: translateX(-50%);
+  }
+
+  @media (max-width: 640px) {
+    .portrait-wordmark,
+    .portrait-wordmark.is-revealed {
+      transform: translate(-50%, -50%);
+    }
   }
 
   .portrait-statement {
