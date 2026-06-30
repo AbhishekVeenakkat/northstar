@@ -1,4 +1,11 @@
-import { type CSSProperties, type FormEvent, useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type FormEvent,
+  type MouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion'
 import './App.css'
 
@@ -28,10 +35,20 @@ const manifestoLines = [
   ['showcases', 'our', 'passion', 'for', 'art.'],
 ]
 const contactActions = ['Say hi', 'Lets start a project', 'lets talk'] as const
+const menuLinks = [
+  { href: '#about', label: 'About' },
+  { href: '#works', label: 'Works' },
+  { href: '#contact', label: 'Contact' },
+] as const
 type ContactAction = (typeof contactActions)[number]
 
 const getBrowserLocationLabel = () => {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+  if (timezone === 'Asia/Kolkata' || timezone === 'Asia/Calcutta') {
+    return 'India'
+  }
+
   const timezoneCity = timezone?.split('/').at(-1)?.replaceAll('_', ' ')
 
   return timezoneCity || 'your corner of the world'
@@ -160,8 +177,12 @@ function App() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const loadingTextOneRef = useRef<HTMLSpanElement>(null)
   const loadingTextTwoRef = useRef<HTMLSpanElement>(null)
+  const contactCardRef = useRef<HTMLDivElement>(null)
+  const contactCardContentRef = useRef<HTMLDivElement>(null)
   const contactPopAudioRef = useRef<AudioContext | null>(null)
   const contactPopCooldownRef = useRef(0)
+  const isMenuNavigationRef = useRef(false)
+  const menuNavigationTimeoutRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoaderExiting, setIsLoaderExiting] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -245,6 +266,28 @@ function App() {
   const [selectedContactAction, setSelectedContactAction] =
     useState<ContactAction | null>(null)
   const [isContactSubmitted, setIsContactSubmitted] = useState(false)
+  const [contactCardHeight, setContactCardHeight] = useState<number | null>(
+    null,
+  )
+  const handleMenuLinkClick = (
+    event: MouseEvent<HTMLAnchorElement>,
+    href: (typeof menuLinks)[number]['href'],
+  ) => {
+    event.preventDefault()
+    setIsMenuOpen(false)
+    window.clearTimeout(menuNavigationTimeoutRef.current)
+    isMenuNavigationRef.current = true
+
+    document.querySelector<HTMLElement>(href)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+
+    window.history.replaceState(null, '', href)
+    menuNavigationTimeoutRef.current = window.setTimeout(() => {
+      isMenuNavigationRef.current = false
+    }, 1200)
+  }
   const playContactBubblePop = () => {
     if (
       typeof window === 'undefined' ||
@@ -318,47 +361,49 @@ function App() {
     }
   }, [])
 
+  useEffect(
+    () => () => {
+      window.clearTimeout(menuNavigationTimeoutRef.current)
+    },
+    [],
+  )
+
   useEffect(() => {
     setContactDayPeriod(getDayPeriod())
     setContactLocation(getBrowserLocationLabel())
+  }, [])
 
-    if (!navigator.permissions || !navigator.geolocation) {
+  useEffect(() => {
+    const card = contactCardRef.current
+    const content = contactCardContentRef.current
+
+    if (!card || !content) {
       return undefined
     }
 
-    let isCancelled = false
+    const updateContactCardHeight = () => {
+      const cardStyles = window.getComputedStyle(card)
+      const paddingBlock =
+        parseFloat(cardStyles.paddingTop) + parseFloat(cardStyles.paddingBottom)
+      const contentHeight = content.scrollHeight + paddingBlock
+      const nextHeight = Math.ceil(contentHeight)
 
-    navigator.permissions
-      .query({ name: 'geolocation' })
-      .then((permissionStatus) => {
-        if (permissionStatus.state !== 'granted' || isCancelled) {
-          return
-        }
+      setContactCardHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      )
+    }
 
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            if (isCancelled) {
-              return
-            }
+    updateContactCardHeight()
 
-            setContactLocation(
-              `${position.coords.latitude.toFixed(2)}, ${position.coords.longitude.toFixed(2)}`,
-            )
-          },
-          () => undefined,
-          {
-            enableHighAccuracy: false,
-            maximumAge: 1000 * 60 * 20,
-            timeout: 1200,
-          },
-        )
-      })
-      .catch(() => undefined)
+    const resizeObserver = new ResizeObserver(updateContactCardHeight)
+    resizeObserver.observe(content)
+    window.addEventListener('resize', updateContactCardHeight)
 
     return () => {
-      isCancelled = true
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateContactCardHeight)
     }
-  }, [])
+  }, [isContactSubmitted, selectedContactAction])
 
   useEffect(() => {
     if (!isLoading) {
@@ -1532,6 +1577,12 @@ function App() {
         viewportHeight
       const scrollDelta = documentScroll - lastDocumentScroll
 
+      if (isMenuNavigationRef.current) {
+        lastRelativeScroll = relativeScroll
+        lastDocumentScroll = documentScroll
+        return
+      }
+
       if (Math.abs(scrollDelta) > 0.5) {
         lastScrollDirection = scrollDelta > 0 ? 1 : -1
       }
@@ -2080,6 +2131,7 @@ function App() {
           </p>
         </section>
         <section
+          id="about"
           ref={fourthSectionRef}
           className="fourth-section"
           aria-label="Experience"
@@ -2353,21 +2405,34 @@ function App() {
           </div>
         </section>
       </div>
-      <section className="portfolio-extra-section" aria-label="My works">
+      <section
+        id="works"
+        className="portfolio-extra-section"
+        aria-label="My works"
+      >
         <h2>My works</h2>
       </section>
       <section className="portfolio-extra-section" aria-label="Hobbies">
         <h2>Hobbies</h2>
       </section>
       <section
+        id="contact"
         className="portfolio-contact-section"
         aria-label="Contacts"
       >
         <div
+          ref={contactCardRef}
           className={`contact-card ${
             selectedContactAction ? 'is-form-open' : ''
           } ${isContactSubmitted ? 'is-submitted' : ''
           }`}
+          style={
+            {
+              '--contact-card-height': contactCardHeight
+                ? `${contactCardHeight}px`
+                : undefined,
+            } as CSSProperties
+          }
         >
           <button
             className="contact-back"
@@ -2378,68 +2443,65 @@ function App() {
               setIsContactSubmitted(false)
             }}
           />
-          <div className="contact-card__content">
-            {!isContactSubmitted && (
-              <div className="contact-card__intro">
-                <video
-                  className="contact-card__video"
-                  src={
-                    selectedContactAction
-                      ? '/contact-chatbot-laptop.webm'
-                      : '/contact-robot.webm'
-                  }
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  aria-hidden="true"
-                />
-                <h2>
-                  {selectedContactAction ?? (
+          <div className="contact-card__content" ref={contactCardContentRef}>
+            <div className="contact-card__intro">
+              <video
+                className="contact-card__video"
+                src={
+                  selectedContactAction
+                    ? '/contact-chatbot-laptop.webm'
+                    : '/contact-robot.webm'
+                }
+                autoPlay
+                loop
+                muted
+                playsInline
+                aria-hidden="true"
+              />
+              <h2>
+                {selectedContactAction ?? (
+                  <>
+                    Hey there!
+                    <br />
+                    How can I help you
+                  </>
+                )}
+                <span>
+                  {selectedContactAction ? (
+                    'Give me more deets'
+                  ) : (
                     <>
-                      Hey there!
-                      <br />
-                      How can I help you
+                      on this {contactDayPeriod} in{' '}
+                      <em>{contactLocation}</em>?
                     </>
                   )}
-                  <span>
-                    {selectedContactAction ? (
-                      'Give me more deets'
-                    ) : (
-                      <>
-                        on this {contactDayPeriod} in{' '}
-                        <em>{contactLocation}</em>?
-                      </>
-                    )}
-                  </span>
-                </h2>
-                <div className="contact-actions" aria-label="Contact actions">
-                  {contactActions.map((contactAction) => (
-                    <button
-                      key={contactAction}
-                      className="contact-action"
-                      type="button"
-                      onClick={() => {
-                        setSelectedContactAction(contactAction)
-                        setIsContactSubmitted(false)
-                      }}
-                      onFocus={playContactBubblePop}
-                      onPointerEnter={playContactBubblePop}
-                    >
-                      {contactAction}
-                    </button>
-                  ))}
-                </div>
+                </span>
+              </h2>
+              <div className="contact-actions" aria-label="Contact actions">
+                {contactActions.map((contactAction) => (
+                  <button
+                    key={contactAction}
+                    className="contact-action"
+                    type="button"
+                    onClick={() => {
+                      setSelectedContactAction(contactAction)
+                      setIsContactSubmitted(false)
+                    }}
+                    onFocus={playContactBubblePop}
+                    onPointerEnter={playContactBubblePop}
+                  >
+                    {contactAction}
+                  </button>
+                ))}
               </div>
-            )}
-            {isContactSubmitted ? (
-              <div className="contact-success" role="status">
+            </div>
+            <div className="contact-card__response">
+              <div className="contact-success" role="status" aria-live="polite">
                 <strong>Successfully Submitted</strong>
                 <p>
                   Your submission is in. Now relax, I&apos;ll contact you soon.
                 </p>
               </div>
-            ) : selectedContactAction ? (
               <form className="contact-form" onSubmit={handleContactSubmit}>
                 <label className="contact-form__full-name">
                   <span>Full Name</span>
@@ -2476,7 +2538,7 @@ function App() {
                   Submit
                 </button>
               </form>
-            ) : null}
+            </div>
           </div>
         </div>
       </section>
@@ -2503,18 +2565,18 @@ function App() {
           aria-label="Portfolio menu"
           aria-hidden={!isMenuOpen}
         >
-          <a href="#work" tabIndex={isMenuOpen ? 0 : -1}>
-            Work
-          </a>
-          <a href="#about" tabIndex={isMenuOpen ? 0 : -1}>
-            About
-          </a>
-          <a href="#notes" tabIndex={isMenuOpen ? 0 : -1}>
-            Notes
-          </a>
-          <a href="#contact" tabIndex={isMenuOpen ? 0 : -1}>
-            Contact
-          </a>
+          {menuLinks.map((menuLink) => (
+            <a
+              key={menuLink.href}
+              href={menuLink.href}
+              tabIndex={isMenuOpen ? 0 : -1}
+              onClick={(event) => {
+                handleMenuLinkClick(event, menuLink.href)
+              }}
+            >
+              {menuLink.label}
+            </a>
+          ))}
         </nav>
         <button
           ref={menuButtonRef}
