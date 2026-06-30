@@ -120,6 +120,10 @@ function App() {
   const closingSlimePathRef = useRef<SVGPathElement>(null)
   const closingSectionRef = useRef<HTMLElement>(null)
   const fourthSectionRef = useRef<HTMLElement>(null)
+  const experienceIntroRef = useRef<HTMLDivElement>(null)
+  const experienceDroneRef = useRef<HTMLDivElement>(null)
+  const experienceCurrentRef = useRef<HTMLDivElement>(null)
+  const timelineIntroRef = useRef<HTMLDivElement>(null)
   const timelinePanelRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
@@ -171,6 +175,16 @@ function App() {
   const [expandedTimelineCard, setExpandedTimelineCard] = useState<
     'baton' | 'fantacode' | 'bamboo' | null
   >(null)
+  const [isDroneRevealed, setIsDroneRevealed] = useState(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return true
+    }
+
+    return false
+  })
   const [heroText, setHeroText] = useState(() => {
     if (
       typeof window !== 'undefined' &&
@@ -267,6 +281,36 @@ function App() {
   }, [isLoading])
 
   useEffect(() => {
+    const intro = experienceIntroRef.current
+
+    if (!intro || isDroneRevealed) {
+      return undefined
+    }
+
+    let revealTimeout = 0
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting || entry.intersectionRatio < 0.4) {
+          return
+        }
+
+        revealTimeout = window.setTimeout(() => {
+          setIsDroneRevealed(true)
+        }, 1000)
+        observer.disconnect()
+      },
+      { threshold: [0.4] },
+    )
+
+    observer.observe(intro)
+
+    return () => {
+      window.clearTimeout(revealTimeout)
+      observer.disconnect()
+    }
+  }, [isDroneRevealed])
+
+  useEffect(() => {
     if (!isLoaderExiting) {
       loadingSlimePathRef.current?.setAttribute(
         'd',
@@ -289,19 +333,19 @@ function App() {
     const renderLoadingSlime = (now: number) => {
       const progress = Math.min(1, (now - startTime) / loadingExitDuration)
       const easedProgress = easeOutCubic(progress)
-      const edge = 1 - easedProgress * 0.28
-      const shoulder = 1 - easedProgress * 0.13
-      const peak = 1 - easedProgress * 0.02
+      const edge = easedProgress * 0.28
+      const shoulder = easedProgress * 0.13
+      const peak = easedProgress * 0.02
       const clipLeft = -0.02
       const clipRight = 1.02
       const path = [
-        `M ${clipLeft} 0 H ${clipRight}`,
+        `M ${clipLeft} 1 H ${clipRight}`,
         `V ${edge.toFixed(4)}`,
         `C 0.9 ${edge.toFixed(4)}, 0.84 ${edge.toFixed(4)}, 0.76 ${shoulder.toFixed(4)}`,
         `C 0.66 ${peak.toFixed(4)}, 0.6 ${peak.toFixed(4)}, 0.5 ${peak.toFixed(4)}`,
         `C 0.4 ${peak.toFixed(4)}, 0.34 ${peak.toFixed(4)}, 0.24 ${shoulder.toFixed(4)}`,
         `C 0.16 ${edge.toFixed(4)}, 0.1 ${edge.toFixed(4)}, ${clipLeft} ${edge.toFixed(4)}`,
-        'V 0 Z',
+        'V 1 Z',
       ].join(' ')
 
       loadingSlimePath.setAttribute('d', path)
@@ -683,6 +727,8 @@ function App() {
     const closingSection = closingSectionRef.current
     const closingSlimePath = closingSlimePathRef.current
     const fourthSection = fourthSectionRef.current
+    const experienceCurrent = experienceCurrentRef.current
+    const timelineIntro = timelineIntroRef.current
     const closingCanvas = closingGridRef.current
     const timelineCanvas = timelineGridRef.current
     const prefersReducedMotion = window.matchMedia(
@@ -698,6 +744,9 @@ function App() {
       !closingSection ||
       !closingSlimePath ||
       !fourthSection ||
+      !experienceCurrent ||
+      !timelineIntro ||
+      !experienceDroneRef.current ||
       !closingCanvas ||
       !timelineCanvas ||
       prefersReducedMotion
@@ -709,6 +758,12 @@ function App() {
     const closingContext = closingCanvas.getContext('2d')
     const timelineContext = timelineCanvas.getContext('2d')
     if (!context || !closingContext || !timelineContext) {
+      return undefined
+    }
+
+    const experienceDrone = experienceDroneRef.current
+
+    if (!experienceDrone) {
       return undefined
     }
 
@@ -746,6 +801,11 @@ function App() {
     let snapTimeout = 0
     let snapFrame = 0
     let isSnapping = false
+    let lastRelativeScroll = 0
+    let lastScrollDirection = 0
+    let scrollGestureBaseIndex = 0
+    let scrollGestureDirection = 0
+    let scrollGestureTimeout = 0
     let lastHeroProgress = 0
     let hasMeasuredHeroProgress = false
     let lastClosingProgress = 0
@@ -928,7 +988,7 @@ function App() {
       const deckRect = deckStage.getBoundingClientRect()
       const viewportHeight = window.innerHeight || 1
       const sectionScrollUnit =
-        Math.max(1, deckStage.offsetHeight - viewportHeight) / 5 ||
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
         viewportHeight
       const heroProgress = Math.min(
         1,
@@ -946,19 +1006,77 @@ function App() {
         1,
         Math.max(0, (-deckRect.top - sectionScrollUnit * 3) / sectionScrollUnit),
       )
-      const timelineProgress = Math.min(
+      const experienceEntryProgress = Math.min(
         1,
         Math.max(0, (-deckRect.top - sectionScrollUnit * 4) / sectionScrollUnit),
       )
-      const timelineSlideStart = 0.18
-      const timelineSlideProgress = Math.min(
+      const timelineProgress = Math.min(
         1,
-        Math.max(
-          0,
-          (timelineProgress - timelineSlideStart) / (1 - timelineSlideStart),
-        ),
+        Math.max(0, (-deckRect.top - sectionScrollUnit * 5) / sectionScrollUnit),
       )
+      const timelineSlideProgress = timelineProgress
       const timelineLineProgress = timelineSlideProgress
+      const experienceTrackProgress =
+        experienceEntryProgress * 0.5 + timelineSlideProgress * 0.5
+      const clampValue = (value: number, min: number, max: number) =>
+        Math.min(max, Math.max(min, value))
+      const sectionWidth =
+        fourthSection.getBoundingClientRect().width || window.innerWidth || 1
+      const sectionRect = fourthSection.getBoundingClientRect()
+      const heading = experienceCurrent.querySelector('h2')
+      const headingRect = heading?.getBoundingClientRect()
+      const timelineIntroTitle = timelineIntro.querySelector('h2')
+      const timelineIntroRect = timelineIntroTitle?.getBoundingClientRect()
+      const isMobileExperience = sectionWidth <= 640
+      const droneWidth = isMobileExperience
+        ? Math.min(168, sectionWidth * 0.43)
+        : Math.min(230, sectionWidth * 0.42)
+      const droneGap = clampValue(sectionWidth * 0.014, 8, 16)
+      const introImageHalf = Math.min(125, sectionWidth * 0.26)
+      const droneStartX =
+        sectionWidth / 2 - introImageHalf - droneGap / 2 - droneWidth / 2
+      const droneStartY = isMobileExperience
+        ? clampValue(viewportHeight * 0.15, 108, 142)
+        : clampValue(viewportHeight * 0.15, 92, 142)
+      const droneTargetX =
+        headingRect && !isMobileExperience
+          ? headingRect.left -
+            sectionRect.left +
+            headingRect.width / 2 -
+            droneWidth / 2 -
+            clampValue(sectionWidth * 0.045, 42, 72)
+          : sectionWidth / 2 -
+            droneWidth / 2 -
+            clampValue(sectionWidth * 0.018, 4, 10)
+      const droneTargetY =
+        isMobileExperience
+          ? clampValue(viewportHeight * 0.29, 224, 270)
+          : headingRect
+            ? headingRect.top - sectionRect.top - droneWidth * 1.12
+            : clampValue(viewportHeight * 0.04, 24, 42)
+      const droneTimelineY = isMobileExperience
+        ? clampValue(viewportHeight * 0.14, 108, 136)
+        : timelineIntroRect
+          ? timelineIntroRect.bottom - sectionRect.top + 22
+          : clampValue(viewportHeight * 0.28, 170, 230)
+      const droneTimelineX =
+        timelineIntroRect && !isMobileExperience
+          ? timelineIntroRect.left -
+            (1 - timelineSlideProgress) * sectionWidth -
+            sectionRect.left +
+            timelineIntroRect.width / 2 -
+            droneWidth / 2
+          : sectionWidth / 2 - droneWidth / 2
+      const droneXBeforeTimeline =
+        droneStartX + (droneTargetX - droneStartX) * experienceEntryProgress
+      const droneYBeforeTimeline =
+        droneStartY + (droneTargetY - droneStartY) * experienceEntryProgress
+      const droneX =
+        droneXBeforeTimeline +
+        (droneTimelineX - droneXBeforeTimeline) * timelineProgress
+      const droneY =
+        droneYBeforeTimeline +
+        (droneTimelineY - droneYBeforeTimeline) * timelineProgress
       const heroDelta = heroProgress - lastHeroProgress
       const closingDelta = closingProgress - lastClosingProgress
       const fourthDelta = fourthProgress - lastFourthProgress
@@ -1033,6 +1151,24 @@ function App() {
         timelineSlideProgress.toString(),
       )
       fourthSection.style.setProperty(
+        '--experience-track-progress',
+        experienceTrackProgress.toString(),
+      )
+      fourthSection.style.setProperty(
+        '--experience-entry-progress',
+        experienceEntryProgress.toString(),
+      )
+      fourthSection.style.setProperty('--drone-x', `${droneX.toFixed(2)}px`)
+      fourthSection.style.setProperty('--drone-y', `${droneY.toFixed(2)}px`)
+      experienceDrone.style.setProperty(
+        '--drone-x',
+        `${droneX.toFixed(2)}px`,
+      )
+      experienceDrone.style.setProperty(
+        '--drone-y',
+        `${droneY.toFixed(2)}px`,
+      )
+      fourthSection.style.setProperty(
         '--timeline-continuity-progress',
         timelineProgress.toString(),
       )
@@ -1041,7 +1177,7 @@ function App() {
         timelineLineProgress.toString(),
       )
 
-      if (!isIdCardRevealed && fourthProgress >= 0.75) {
+      if (!isIdCardRevealed && experienceEntryProgress >= 0.75) {
         setIsIdCardRevealed(true)
       }
     }
@@ -1127,11 +1263,10 @@ function App() {
     const snapToNearestSection = () => {
       const viewportHeight = window.innerHeight || 1
       const sectionScrollUnit =
-        Math.max(1, deckStage.offsetHeight - viewportHeight) / 5 ||
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
         viewportHeight
       const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
       const relativeScroll = window.scrollY - deckTop
-      const maxSnapDistance = sectionScrollUnit * 0.18
       const snapPoints = [
         0,
         sectionScrollUnit,
@@ -1139,18 +1274,50 @@ function App() {
         sectionScrollUnit * 3,
         sectionScrollUnit * 4,
         sectionScrollUnit * 5,
+        sectionScrollUnit * 6,
       ]
-      const nearestPoint = snapPoints.reduce((nearest, point) =>
-        Math.abs(point - relativeScroll) < Math.abs(nearest - relativeScroll)
-          ? point
-          : nearest,
+      const nearestIndex = snapPoints.reduce(
+        (nearest, point, index) =>
+          Math.abs(point - relativeScroll) <
+          Math.abs(snapPoints[nearest] - relativeScroll)
+            ? index
+            : nearest,
+        0,
       )
+      const segmentIndex = Math.max(
+        0,
+        Math.min(5, Math.floor(relativeScroll / sectionScrollUnit)),
+      )
+      const segmentProgress = Math.max(
+        0,
+        Math.min(1, (relativeScroll - snapPoints[segmentIndex]) / sectionScrollUnit),
+      )
+      const isExperienceSegment = segmentIndex >= 3 && segmentIndex <= 5
+      const forwardSnapThreshold =
+        segmentIndex === 4 ? 0.44 : segmentIndex >= 3 ? 0.12 : 0.08
+      const directionalSnapIndex =
+        isExperienceSegment && lastScrollDirection !== 0
+          ? segmentIndex +
+            (lastScrollDirection > 0
+              ? segmentProgress > forwardSnapThreshold
+                ? 1
+                : 0
+              : segmentProgress < 0.92
+                ? 0
+                : 1)
+          : nearestIndex
+      const targetIndex = Math.max(0, Math.min(6, directionalSnapIndex))
+      const targetPoint = snapPoints[targetIndex]
+      const isExperienceSnap = targetIndex >= 3 && targetIndex <= 6
+      const maxSnapDistance =
+        sectionScrollUnit *
+        (targetIndex >= 5 ? 0.62 : isExperienceSnap ? 0.48 : 0.18)
 
-      if (Math.abs(nearestPoint - relativeScroll) > maxSnapDistance) {
+      if (Math.abs(targetPoint - relativeScroll) > maxSnapDistance) {
         return
       }
 
-      const targetScroll = deckTop + nearestPoint
+      const targetScroll = deckTop + targetPoint
       const startScroll = window.scrollY
       const distance = targetScroll - startScroll
 
@@ -1162,18 +1329,18 @@ function App() {
       isSnapping = true
 
       const duration = Math.min(
-        820,
-        Math.max(460, Math.abs(distance) * 0.9),
+        isExperienceSnap ? 780 : 820,
+        Math.max(isExperienceSnap ? 440 : 460, Math.abs(distance) * 0.78),
       )
       const startTime = window.performance.now()
-      const easeInOutCubic = (progress: number) =>
+      const easeSnap = (progress: number) =>
         progress < 0.5
-          ? 4 * progress * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 3) / 2
+          ? 16 * progress * progress * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 5) / 2
 
       const animateSnap = (now: number) => {
         const progress = Math.min(1, (now - startTime) / duration)
-        const easedProgress = easeInOutCubic(progress)
+        const easedProgress = easeSnap(progress)
 
         window.scrollTo(0, startScroll + distance * easedProgress)
         scheduleParallaxUpdate()
@@ -1192,7 +1359,7 @@ function App() {
 
     const scheduleSectionSnap = () => {
       window.clearTimeout(snapTimeout)
-      snapTimeout = window.setTimeout(snapToNearestSection, 180)
+      snapTimeout = window.setTimeout(snapToNearestSection, 90)
     }
 
     const handleDeckScroll = () => {
@@ -1201,6 +1368,61 @@ function App() {
       if (isSnapping) {
         return
       }
+
+      const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
+      const relativeScroll = window.scrollY - deckTop
+      const viewportHeight = window.innerHeight || 1
+      const sectionScrollUnit =
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
+        viewportHeight
+      const scrollDelta = relativeScroll - lastRelativeScroll
+
+      if (Math.abs(scrollDelta) > 0.5) {
+        lastScrollDirection = scrollDelta > 0 ? 1 : -1
+      }
+
+      const isInsideDeck =
+        relativeScroll > -2 && relativeScroll < sectionScrollUnit * 6 + 2
+
+      if (isInsideDeck && lastScrollDirection !== 0) {
+        if (scrollGestureDirection !== lastScrollDirection) {
+          scrollGestureBaseIndex = Math.max(
+            0,
+            Math.min(6, Math.round(lastRelativeScroll / sectionScrollUnit)),
+          )
+          scrollGestureDirection = lastScrollDirection
+        }
+
+        const gestureTargetIndex = Math.max(
+          0,
+          Math.min(6, scrollGestureBaseIndex + scrollGestureDirection),
+        )
+        const gestureLimit = gestureTargetIndex * sectionScrollUnit
+        const hasCrossedGestureLimit =
+          scrollGestureDirection > 0
+            ? relativeScroll > gestureLimit
+            : relativeScroll < gestureLimit
+
+        if (hasCrossedGestureLimit) {
+          const limitedScroll = deckTop + gestureLimit
+
+          window.scrollTo(0, limitedScroll)
+          lastRelativeScroll = gestureLimit
+          scheduleSectionSnap()
+          return
+        }
+
+        window.clearTimeout(scrollGestureTimeout)
+        scrollGestureTimeout = window.setTimeout(() => {
+          scrollGestureDirection = 0
+          scrollGestureBaseIndex = Math.max(
+            0,
+            Math.min(6, Math.round(lastRelativeScroll / sectionScrollUnit)),
+          )
+        }, 180)
+      }
+
+      lastRelativeScroll = relativeScroll
 
       scheduleSectionSnap()
     }
@@ -1354,6 +1576,7 @@ function App() {
       window.removeEventListener('scroll', handleDeckScroll)
       window.removeEventListener('resize', handleResize)
       window.clearTimeout(snapTimeout)
+      window.clearTimeout(scrollGestureTimeout)
       window.cancelAnimationFrame(animationFrame)
       window.cancelAnimationFrame(parallaxFrame)
       window.cancelAnimationFrame(slimeFrame)
@@ -1656,26 +1879,57 @@ function App() {
           className="fourth-section"
           aria-label="Experience"
         >
+          <div
+            ref={experienceDroneRef}
+            className={`experience-drone-stage ${
+              isDroneRevealed ? 'is-drone-revealed' : ''
+            }`}
+            aria-hidden="true"
+          >
+            <video
+              className="experience-drone-video"
+              src="/delivery-drone.webm"
+              autoPlay
+              loop
+              muted
+              playsInline
+            />
+          </div>
           <div className="experience-track">
-            <div className="timeline-continuity-line" aria-hidden="true">
-              <span className="timeline-continuity-line__base" />
-              <span className="timeline-continuity-line__active" />
+            <div
+              className="experience-slide experience-slide-blank"
+              aria-label="Design and development experience"
+            >
+              <div
+                ref={experienceIntroRef}
+                className={`experience-intro ${
+                  isDroneRevealed ? 'is-drone-revealed' : ''
+                }`}
+              >
+                <div className="experience-intro-media" aria-hidden="true">
+                  <img
+                    className="experience-intro-image"
+                    src="/vr-jumping-man.png"
+                    alt=""
+                    draggable={false}
+                  />
+                </div>
+                <p className="experience-intro-copy">
+                  <span className="experience-intro-years">6+</span>
+                  <span>
+                    years delivering production{' '}
+                    <span className="experience-intro-emphasis">
+                      designs and apps
+                    </span>
+                    .
+                  </span>
+                </p>
+              </div>
             </div>
             <div className="experience-slide">
               <div className="experience-panel">
-                <div className="experience-current">
-                  <div
-                    className="experience-pills"
-                    aria-label="Experience status"
-                  >
-                    <span className="experience-pill experience-pill-recent">
-                      Recently • 2022 - 2026
-                    </span>
-                    <span className="experience-pill experience-pill-open">
-                      <span className="experience-live-dot" aria-hidden="true" />
-                      Open to work
-                    </span>
-                  </div>
+                <div ref={experienceCurrentRef} className="experience-current">
+                  <p className="experience-period">2022 - 2026</p>
                   <h2>UX Engineer</h2>
                   <p className="experience-company">
                     Raaho - Quickdigital Technologies Pvt. Ltd.
@@ -1776,7 +2030,7 @@ function App() {
                 }`}
                 aria-label="Previous contributions"
               >
-                <div className="timeline-intro">
+                <div ref={timelineIntroRef} className="timeline-intro">
                   <h2>Previous Contributions</h2>
                 </div>
                 <ol className="timeline-rail">
