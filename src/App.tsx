@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, type FormEvent, useEffect, useRef, useState } from 'react'
 import { motion, useAnimationControls, useReducedMotion } from 'framer-motion'
 import './App.css'
 
@@ -27,6 +27,37 @@ const manifestoLines = [
   ['sentimental', 'importance', 'and'],
   ['showcases', 'our', 'passion', 'for', 'art.'],
 ]
+const contactActions = ['Say hi', 'Lets start a project', 'lets talk'] as const
+type ContactAction = (typeof contactActions)[number]
+
+const getBrowserLocationLabel = () => {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const timezoneCity = timezone?.split('/').at(-1)?.replaceAll('_', ' ')
+
+  return timezoneCity || 'your corner of the world'
+}
+
+const getDayPeriod = () => {
+  const hour = new Date().getHours()
+
+  if (hour < 5) {
+    return 'night'
+  }
+
+  if (hour < 12) {
+    return 'morning'
+  }
+
+  if (hour < 17) {
+    return 'afternoon'
+  }
+
+  if (hour < 21) {
+    return 'evening'
+  }
+
+  return 'night'
+}
 
 const getViewportCoverage = (element: Element) => {
   const rect = element.getBoundingClientRect()
@@ -129,6 +160,8 @@ function App() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const loadingTextOneRef = useRef<HTMLSpanElement>(null)
   const loadingTextTwoRef = useRef<HTMLSpanElement>(null)
+  const contactPopAudioRef = useRef<AudioContext | null>(null)
+  const contactPopCooldownRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoaderExiting, setIsLoaderExiting] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -195,6 +228,81 @@ function App() {
 
     return ''
   })
+  const [contactLocation, setContactLocation] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'your corner of the world'
+    }
+
+    return getBrowserLocationLabel()
+  })
+  const [contactDayPeriod, setContactDayPeriod] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'afternoon'
+    }
+
+    return getDayPeriod()
+  })
+  const [selectedContactAction, setSelectedContactAction] =
+    useState<ContactAction | null>(null)
+  const [isContactSubmitted, setIsContactSubmitted] = useState(false)
+  const playContactBubblePop = () => {
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return
+    }
+
+    const now = window.performance.now()
+
+    if (now - contactPopCooldownRef.current < 110) {
+      return
+    }
+
+    contactPopCooldownRef.current = now
+
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext
+
+    if (!AudioContextConstructor) {
+      return
+    }
+
+    const audioContext =
+      contactPopAudioRef.current ?? new AudioContextConstructor()
+    contactPopAudioRef.current = audioContext
+
+    if (audioContext.state === 'suspended') {
+      void audioContext.resume()
+    }
+
+    const startTime = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gain = audioContext.createGain()
+
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(520, startTime)
+    oscillator.frequency.exponentialRampToValueAtTime(980, startTime + 0.052)
+
+    gain.gain.setValueAtTime(0.0001, startTime)
+    gain.gain.exponentialRampToValueAtTime(0.042, startTime + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.13)
+
+    oscillator.connect(gain)
+    gain.connect(audioContext.destination)
+    oscillator.start(startTime)
+    oscillator.stop(startTime + 0.14)
+    oscillator.onended = () => {
+      oscillator.disconnect()
+      gain.disconnect()
+    }
+  }
+  const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setIsContactSubmitted(true)
+  }
 
   useEffect(() => {
     const exitTimeout = window.setTimeout(() => {
@@ -207,6 +315,48 @@ function App() {
     return () => {
       window.clearTimeout(exitTimeout)
       window.clearTimeout(loadingTimeout)
+    }
+  }, [])
+
+  useEffect(() => {
+    setContactDayPeriod(getDayPeriod())
+    setContactLocation(getBrowserLocationLabel())
+
+    if (!navigator.permissions || !navigator.geolocation) {
+      return undefined
+    }
+
+    let isCancelled = false
+
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((permissionStatus) => {
+        if (permissionStatus.state !== 'granted' || isCancelled) {
+          return
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            if (isCancelled) {
+              return
+            }
+
+            setContactLocation(
+              `${position.coords.latitude.toFixed(2)}, ${position.coords.longitude.toFixed(2)}`,
+            )
+          },
+          () => undefined,
+          {
+            enableHighAccuracy: false,
+            maximumAge: 1000 * 60 * 20,
+            timeout: 1200,
+          },
+        )
+      })
+      .catch(() => undefined)
+
+    return () => {
+      isCancelled = true
     }
   }, [])
 
@@ -801,6 +951,7 @@ function App() {
     let snapTimeout = 0
     let snapFrame = 0
     let isSnapping = false
+    let lastDocumentScroll = window.scrollY
     let lastRelativeScroll = 0
     let lastScrollDirection = 0
     let scrollGestureBaseIndex = 0
@@ -1027,8 +1178,9 @@ function App() {
       const headingRect = heading?.getBoundingClientRect()
       const timelineIntroTitle = timelineIntro.querySelector('h2')
       const timelineIntroRect = timelineIntroTitle?.getBoundingClientRect()
+      const isResponsiveExperience = sectionWidth <= 900
       const isMobileExperience = sectionWidth <= 640
-      const droneWidth = isMobileExperience
+      const droneWidth = isResponsiveExperience
         ? Math.min(168, sectionWidth * 0.43)
         : Math.min(230, sectionWidth * 0.42)
       const droneGap = clampValue(sectionWidth * 0.014, 8, 16)
@@ -1039,7 +1191,7 @@ function App() {
         ? clampValue(viewportHeight * 0.15, 108, 142)
         : clampValue(viewportHeight * 0.15, 92, 142)
       const droneTargetX =
-        headingRect && !isMobileExperience
+        headingRect && !isResponsiveExperience
           ? headingRect.left -
             sectionRect.left +
             headingRect.width / 2 -
@@ -1049,18 +1201,18 @@ function App() {
             droneWidth / 2 -
             clampValue(sectionWidth * 0.018, 4, 10)
       const droneTargetY =
-        isMobileExperience
+        isResponsiveExperience
           ? clampValue(viewportHeight * 0.29, 224, 270)
           : headingRect
             ? headingRect.top - sectionRect.top - droneWidth * 1.12
             : clampValue(viewportHeight * 0.04, 24, 42)
-      const droneTimelineY = isMobileExperience
+      const droneTimelineY = isResponsiveExperience
         ? clampValue(viewportHeight * 0.14, 108, 136)
         : timelineIntroRect
           ? timelineIntroRect.bottom - sectionRect.top + 22
           : clampValue(viewportHeight * 0.28, 170, 230)
       const droneTimelineX =
-        timelineIntroRect && !isMobileExperience
+        timelineIntroRect && !isResponsiveExperience
           ? timelineIntroRect.left -
             (1 - timelineSlideProgress) * sectionWidth -
             sectionRect.left +
@@ -1260,64 +1412,28 @@ function App() {
       })
     }
 
-    const snapToNearestSection = () => {
+    const resetScrollGesture = () => {
       const viewportHeight = window.innerHeight || 1
+      const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
       const sectionScrollUnit =
         Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
         viewportHeight
-      const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
-      const relativeScroll = window.scrollY - deckTop
-      const snapPoints = [
-        0,
-        sectionScrollUnit,
-        sectionScrollUnit * 2,
-        sectionScrollUnit * 3,
-        sectionScrollUnit * 4,
-        sectionScrollUnit * 5,
-        sectionScrollUnit * 6,
-      ]
-      const nearestIndex = snapPoints.reduce(
-        (nearest, point, index) =>
-          Math.abs(point - relativeScroll) <
-          Math.abs(snapPoints[nearest] - relativeScroll)
-            ? index
-            : nearest,
-        0,
-      )
-      const segmentIndex = Math.max(
-        0,
-        Math.min(5, Math.floor(relativeScroll / sectionScrollUnit)),
-      )
-      const segmentProgress = Math.max(
-        0,
-        Math.min(1, (relativeScroll - snapPoints[segmentIndex]) / sectionScrollUnit),
-      )
-      const isExperienceSegment = segmentIndex >= 3 && segmentIndex <= 5
-      const forwardSnapThreshold =
-        segmentIndex === 4 ? 0.44 : segmentIndex >= 3 ? 0.12 : 0.08
-      const directionalSnapIndex =
-        isExperienceSegment && lastScrollDirection !== 0
-          ? segmentIndex +
-            (lastScrollDirection > 0
-              ? segmentProgress > forwardSnapThreshold
-                ? 1
-                : 0
-              : segmentProgress < 0.92
-                ? 0
-                : 1)
-          : nearestIndex
-      const targetIndex = Math.max(0, Math.min(6, directionalSnapIndex))
-      const targetPoint = snapPoints[targetIndex]
-      const isExperienceSnap = targetIndex >= 3 && targetIndex <= 6
-      const maxSnapDistance =
-        sectionScrollUnit *
-        (targetIndex >= 5 ? 0.62 : isExperienceSnap ? 0.48 : 0.18)
 
-      if (Math.abs(targetPoint - relativeScroll) > maxSnapDistance) {
-        return
-      }
+      lastDocumentScroll = window.scrollY
+      lastRelativeScroll = window.scrollY - deckTop
+      scrollGestureDirection = 0
+      scrollGestureBaseIndex = Math.max(
+        0,
+        Math.min(6, Math.round(lastRelativeScroll / sectionScrollUnit)),
+      )
+    }
 
-      const targetScroll = deckTop + targetPoint
+    const scheduleScrollGestureReset = () => {
+      window.clearTimeout(scrollGestureTimeout)
+      scrollGestureTimeout = window.setTimeout(resetScrollGesture, 180)
+    }
+
+    const animateSoftSnap = (targetScroll: number) => {
       const startScroll = window.scrollY
       const distance = targetScroll - startScroll
 
@@ -1328,15 +1444,12 @@ function App() {
       window.cancelAnimationFrame(snapFrame)
       isSnapping = true
 
-      const duration = Math.min(
-        isExperienceSnap ? 780 : 820,
-        Math.max(isExperienceSnap ? 440 : 460, Math.abs(distance) * 0.78),
-      )
+      const duration = Math.min(620, Math.max(320, Math.abs(distance) * 1.8))
       const startTime = window.performance.now()
       const easeSnap = (progress: number) =>
         progress < 0.5
-          ? 16 * progress * progress * progress * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 5) / 2
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2
 
       const animateSnap = (now: number) => {
         const progress = Math.min(1, (now - startTime) / duration)
@@ -1352,14 +1465,55 @@ function App() {
 
         snapFrame = 0
         isSnapping = false
+        resetScrollGesture()
       }
 
       snapFrame = window.requestAnimationFrame(animateSnap)
     }
 
-    const scheduleSectionSnap = () => {
+    const snapToNearbySection = () => {
+      if (isSnapping) {
+        return
+      }
+
+      const viewportHeight = window.innerHeight || 1
+      const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
+      const sectionScrollUnit =
+        Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
+        viewportHeight
+      const relativeScroll = window.scrollY - deckTop
+      const deckSnapPoints = Array.from({ length: 7 }, (_, index) =>
+        deckTop + sectionScrollUnit * index,
+      )
+      const extraSnapPoints = Array.from(
+        document.querySelectorAll<HTMLElement>('.portfolio-extra-section'),
+      ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
+      const isNearDeck =
+        relativeScroll > -viewportHeight * 0.2 &&
+        relativeScroll < sectionScrollUnit * 6 + viewportHeight * 0.2
+      const candidatePoints = isNearDeck ? deckSnapPoints : extraSnapPoints
+
+      if (!candidatePoints.length) {
+        return
+      }
+
+      const nearestPoint = candidatePoints.reduce((nearest, point) =>
+        Math.abs(point - window.scrollY) < Math.abs(nearest - window.scrollY)
+          ? point
+          : nearest,
+      )
+      const snapThreshold = Math.min(viewportHeight * 0.14, 110)
+
+      if (Math.abs(nearestPoint - window.scrollY) > snapThreshold) {
+        return
+      }
+
+      animateSoftSnap(nearestPoint)
+    }
+
+    const scheduleNearbySectionSnap = () => {
       window.clearTimeout(snapTimeout)
-      snapTimeout = window.setTimeout(snapToNearestSection, 90)
+      snapTimeout = window.setTimeout(snapToNearbySection, 130)
     }
 
     const handleDeckScroll = () => {
@@ -1371,11 +1525,12 @@ function App() {
 
       const deckTop = deckStage.getBoundingClientRect().top + window.scrollY
       const relativeScroll = window.scrollY - deckTop
+      const documentScroll = window.scrollY
       const viewportHeight = window.innerHeight || 1
       const sectionScrollUnit =
         Math.max(1, deckStage.offsetHeight - viewportHeight) / 6 ||
         viewportHeight
-      const scrollDelta = relativeScroll - lastRelativeScroll
+      const scrollDelta = documentScroll - lastDocumentScroll
 
       if (Math.abs(scrollDelta) > 0.5) {
         lastScrollDirection = scrollDelta > 0 ? 1 : -1
@@ -1408,23 +1563,73 @@ function App() {
 
           window.scrollTo(0, limitedScroll)
           lastRelativeScroll = gestureLimit
-          scheduleSectionSnap()
+          lastDocumentScroll = limitedScroll
+          scheduleScrollGestureReset()
           return
         }
 
-        window.clearTimeout(scrollGestureTimeout)
-        scrollGestureTimeout = window.setTimeout(() => {
-          scrollGestureDirection = 0
-          scrollGestureBaseIndex = Math.max(
-            0,
-            Math.min(6, Math.round(lastRelativeScroll / sectionScrollUnit)),
-          )
-        }, 180)
+        scheduleScrollGestureReset()
+      }
+
+      const extraSnapPoints = Array.from(
+        document.querySelectorAll<HTMLElement>('.portfolio-extra-section'),
+      ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
+      const firstExtraSnapPoint = extraSnapPoints[0]
+      const isInsideExtraSections =
+        firstExtraSnapPoint !== undefined &&
+        documentScroll >= firstExtraSnapPoint - viewportHeight * 0.45
+
+      if (!isInsideDeck && isInsideExtraSections && lastScrollDirection !== 0) {
+        const nearestExtraIndex =
+          firstExtraSnapPoint !== undefined &&
+          lastDocumentScroll < firstExtraSnapPoint - 2 &&
+          lastScrollDirection > 0
+            ? -1
+            : extraSnapPoints.reduce(
+                (nearest, point, index) =>
+                  Math.abs(point - lastDocumentScroll) <
+                  Math.abs(extraSnapPoints[nearest] - lastDocumentScroll)
+                    ? index
+                    : nearest,
+                0,
+              )
+        const extraGestureTargetIndex = Math.max(
+          0,
+          Math.min(
+            extraSnapPoints.length - 1,
+            nearestExtraIndex + lastScrollDirection,
+          ),
+        )
+        const isPastLastExtraSnap =
+          lastScrollDirection > 0 &&
+          nearestExtraIndex >= extraSnapPoints.length - 1
+
+        if (isPastLastExtraSnap) {
+          lastRelativeScroll = relativeScroll
+          lastDocumentScroll = documentScroll
+          scheduleScrollGestureReset()
+          return
+        }
+
+        const extraGestureLimit = extraSnapPoints[extraGestureTargetIndex]
+        const extraOvershootLimit = viewportHeight * 0.55
+        const hasCrossedExtraGestureLimit =
+          extraGestureLimit !== undefined &&
+          (lastScrollDirection > 0
+            ? documentScroll > extraGestureLimit + extraOvershootLimit
+            : documentScroll < extraGestureLimit - extraOvershootLimit)
+
+        if (hasCrossedExtraGestureLimit) {
+          window.scrollTo(0, extraGestureLimit)
+          lastDocumentScroll = extraGestureLimit
+          scheduleScrollGestureReset()
+          return
+        }
       }
 
       lastRelativeScroll = relativeScroll
-
-      scheduleSectionSnap()
+      lastDocumentScroll = documentScroll
+      scheduleNearbySectionSnap()
     }
 
     const render = () => {
@@ -2148,7 +2353,133 @@ function App() {
           </div>
         </section>
       </div>
-      <section className="sixth-section" aria-label="Blank section" />
+      <section className="portfolio-extra-section" aria-label="My works">
+        <h2>My works</h2>
+      </section>
+      <section className="portfolio-extra-section" aria-label="Hobbies">
+        <h2>Hobbies</h2>
+      </section>
+      <section
+        className="portfolio-contact-section"
+        aria-label="Contacts"
+      >
+        <div
+          className={`contact-card ${
+            selectedContactAction ? 'is-form-open' : ''
+          } ${isContactSubmitted ? 'is-submitted' : ''
+          }`}
+        >
+          <button
+            className="contact-back"
+            type="button"
+            aria-label="Back to contact options"
+            onClick={() => {
+              setSelectedContactAction(null)
+              setIsContactSubmitted(false)
+            }}
+          />
+          <div className="contact-card__content">
+            {!isContactSubmitted && (
+              <div className="contact-card__intro">
+                <video
+                  className="contact-card__video"
+                  src={
+                    selectedContactAction
+                      ? '/contact-chatbot-laptop.webm'
+                      : '/contact-robot.webm'
+                  }
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  aria-hidden="true"
+                />
+                <h2>
+                  {selectedContactAction ?? (
+                    <>
+                      Hey there!
+                      <br />
+                      How can I help you
+                    </>
+                  )}
+                  <span>
+                    {selectedContactAction ? (
+                      'Give me more deets'
+                    ) : (
+                      <>
+                        on this {contactDayPeriod} in{' '}
+                        <em>{contactLocation}</em>?
+                      </>
+                    )}
+                  </span>
+                </h2>
+                <div className="contact-actions" aria-label="Contact actions">
+                  {contactActions.map((contactAction) => (
+                    <button
+                      key={contactAction}
+                      className="contact-action"
+                      type="button"
+                      onClick={() => {
+                        setSelectedContactAction(contactAction)
+                        setIsContactSubmitted(false)
+                      }}
+                      onFocus={playContactBubblePop}
+                      onPointerEnter={playContactBubblePop}
+                    >
+                      {contactAction}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isContactSubmitted ? (
+              <div className="contact-success" role="status">
+                <strong>Successfully Submitted</strong>
+                <p>
+                  Your submission is in. Now relax, I&apos;ll contact you soon.
+                </p>
+              </div>
+            ) : selectedContactAction ? (
+              <form className="contact-form" onSubmit={handleContactSubmit}>
+                <label className="contact-form__full-name">
+                  <span>Full Name</span>
+                  <input
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Full Name"
+                  />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="Email"
+                  />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input
+                    name="phone"
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder="Phone"
+                  />
+                </label>
+                <label className="contact-form__message">
+                  <span>Message</span>
+                  <textarea name="message" rows={4} placeholder="Message" />
+                </label>
+                <button className="contact-submit" type="submit">
+                  Submit
+                </button>
+              </form>
+            ) : null}
+          </div>
+        </div>
+      </section>
       <div
         ref={menuRef}
         className={`menu-cta ${isMenuOpen ? 'is-open' : ''}`}
