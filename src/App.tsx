@@ -298,6 +298,54 @@ function App() {
       isMenuNavigationRef.current = false
     }, 1200)
   }
+
+  const getPortfolioAudioContext = () => {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext
+
+    if (!AudioContextConstructor) {
+      return null
+    }
+
+    const audioContext =
+      contactPopAudioRef.current ?? new AudioContextConstructor()
+    contactPopAudioRef.current = audioContext
+
+    if (audioContext.state === 'suspended') {
+      void audioContext.resume()
+    }
+
+    return audioContext
+  }
+
+  const unlockPortfolioAudio = () => {
+    const audioContext = getPortfolioAudioContext()
+
+    if (!audioContext) {
+      return
+    }
+
+    const source = audioContext.createBufferSource()
+    const gain = audioContext.createGain()
+
+    source.buffer = audioContext.createBuffer(1, 1, audioContext.sampleRate)
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime)
+    source.connect(gain)
+    gain.connect(audioContext.destination)
+    source.start(audioContext.currentTime)
+    source.stop(audioContext.currentTime + 0.01)
+    source.onended = () => {
+      source.disconnect()
+      gain.disconnect()
+    }
+  }
+
   const playContactBubblePop = () => {
     if (
       typeof window === 'undefined' ||
@@ -314,21 +362,10 @@ function App() {
 
     contactPopCooldownRef.current = now
 
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext
+    const audioContext = getPortfolioAudioContext()
 
-    if (!AudioContextConstructor) {
+    if (!audioContext || audioContext.state !== 'running') {
       return
-    }
-
-    const audioContext =
-      contactPopAudioRef.current ?? new AudioContextConstructor()
-    contactPopAudioRef.current = audioContext
-
-    if (audioContext.state === 'suspended') {
-      void audioContext.resume()
     }
 
     const startTime = audioContext.currentTime
@@ -340,7 +377,7 @@ function App() {
     oscillator.frequency.exponentialRampToValueAtTime(980, startTime + 0.052)
 
     gain.gain.setValueAtTime(0.0001, startTime)
-    gain.gain.exponentialRampToValueAtTime(0.042, startTime + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.075, startTime + 0.012)
     gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.13)
 
     oscillator.connect(gain)
@@ -369,21 +406,10 @@ function App() {
 
     timelineHoverCooldownRef.current = now
 
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext
+    const audioContext = getPortfolioAudioContext()
 
-    if (!AudioContextConstructor) {
+    if (!audioContext || audioContext.state !== 'running') {
       return
-    }
-
-    const audioContext =
-      contactPopAudioRef.current ?? new AudioContextConstructor()
-    contactPopAudioRef.current = audioContext
-
-    if (audioContext.state === 'suspended') {
-      void audioContext.resume()
     }
 
     const startTime = audioContext.currentTime
@@ -396,7 +422,7 @@ function App() {
     oscillator.frequency.exponentialRampToValueAtTime(260, startTime + 0.12)
 
     gain.gain.setValueAtTime(0.0001, startTime)
-    gain.gain.exponentialRampToValueAtTime(0.026, startTime + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.052, startTime + 0.012)
     gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.16)
 
     oscillator.connect(gain)
@@ -418,21 +444,10 @@ function App() {
       return
     }
 
-    const AudioContextConstructor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext
+    const audioContext = getPortfolioAudioContext()
 
-    if (!AudioContextConstructor) {
+    if (!audioContext || audioContext.state !== 'running') {
       return
-    }
-
-    const audioContext =
-      contactPopAudioRef.current ?? new AudioContextConstructor()
-    contactPopAudioRef.current = audioContext
-
-    if (audioContext.state === 'suspended') {
-      void audioContext.resume()
     }
 
     const startTime = audioContext.currentTime
@@ -469,12 +484,12 @@ function App() {
     noiseFilter.frequency.setValueAtTime(520, startTime)
     noiseFilter.Q.setValueAtTime(7, startTime)
     noiseGain.gain.setValueAtTime(0.0001, startTime)
-    noiseGain.gain.exponentialRampToValueAtTime(0.024, startTime + 0.04)
-    noiseGain.gain.exponentialRampToValueAtTime(0.012, startTime + 0.24)
+    noiseGain.gain.exponentialRampToValueAtTime(0.048, startTime + 0.04)
+    noiseGain.gain.exponentialRampToValueAtTime(0.026, startTime + 0.24)
 
     gain.gain.setValueAtTime(0.0001, startTime)
-    gain.gain.exponentialRampToValueAtTime(0.009, startTime + 0.09)
-    gain.gain.setValueAtTime(0.012, startTime + 0.24)
+    gain.gain.exponentialRampToValueAtTime(0.02, startTime + 0.09)
+    gain.gain.setValueAtTime(0.026, startTime + 0.24)
 
     lfo.connect(lfoGain)
     lfoGain.connect(oscillator.frequency)
@@ -554,6 +569,30 @@ function App() {
     },
     [],
   )
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      unlockPortfolioAudio()
+    }
+
+    window.addEventListener('pointerdown', unlockAudio, {
+      capture: true,
+      once: true,
+    })
+    window.addEventListener('keydown', unlockAudio, {
+      capture: true,
+      once: true,
+    })
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio, {
+        capture: true,
+      })
+      window.removeEventListener('keydown', unlockAudio, {
+        capture: true,
+      })
+    }
+  }, [])
 
   useEffect(() => {
     setContactDayPeriod(getDayPeriod())
