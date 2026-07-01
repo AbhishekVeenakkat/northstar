@@ -119,29 +119,78 @@ body {
 }
 
 .portfolio-contact-section {
+  --contact-section-padding: clamp(18px, 2.6vw, 32px);
   display: grid;
   row-gap: clamp(30px, 5vw, 54px);
   box-sizing: border-box;
-  padding: clamp(18px, 2.6vw, 32px) clamp(18px, 2.6vw, 32px)
-    clamp(72px, 10vw, 140px);
+  min-height: 100svh;
+  padding: var(--contact-section-padding) var(--contact-section-padding) 0;
   background: #f7f1ed;
   color: #111418;
+}
+
+.contact-reveal-stage {
+  --contact-hidden-card-progress: 0;
+  --contact-hidden-card-reveal: 270px;
+  position: relative;
+  width: 100%;
+  padding-bottom: calc(75px + (var(--contact-section-padding) / 2));
 }
 
 .contact-card {
   position: relative;
   isolation: isolate;
+  z-index: 2;
   box-sizing: border-box;
   display: grid;
   place-items: center;
   width: 100%;
   block-size: var(--contact-card-height, auto);
+  min-height: calc(100svh - (var(--contact-section-padding) * 2));
   overflow: hidden;
   border-radius: clamp(22px, 3.2vw, 42px);
   background: #0c1016;
   color: #f7f1ed;
   padding: clamp(34px, 5vw, 64px) 0;
+  transform: translateY(
+    calc(var(--contact-hidden-card-progress) * var(--contact-hidden-card-reveal) * -1)
+  );
   transition: block-size 780ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.contact-hidden-card {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 1;
+  width: calc(100% - clamp(64px, 8vw, 120px));
+  block-size: var(--contact-card-height, auto);
+  min-height: calc(100svh - (var(--contact-section-padding) * 2));
+  border-radius: clamp(22px, 3.2vw, 42px);
+  background: #cfd3d6;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.portfolio-wordmark-section {
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  box-sizing: border-box;
+  min-height: 24svh;
+  padding: clamp(4px, 0.65vw, 8px) clamp(18px, 2.6vw, 32px)
+    clamp(18px, 2.6vw, 32px);
+  background: #f7f1ed;
+}
+
+.portfolio-wordmark-section img {
+  display: block;
+  width: calc(100% - clamp(64px, 8vw, 120px));
+  height: auto;
+  opacity: 0.08;
+  filter: brightness(0) saturate(100%) invert(5%) sepia(7%) saturate(1142%)
+    hue-rotate(169deg) brightness(95%) contrast(94%);
 }
 
 .contact-card::before,
@@ -191,8 +240,14 @@ body {
 }
 
 .contact-card.is-submitted .contact-card__content {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: clamp(48px, 7vw, 86px) clamp(18px, 4vw, 48px);
   align-content: center;
-  padding-top: 0;
 }
 
 .contact-card__intro {
@@ -212,6 +267,7 @@ body {
 }
 
 .contact-card.is-submitted .contact-card__intro {
+  position: absolute;
   opacity: 0;
   transform: translateY(-18px) scale(0.98);
   pointer-events: none;
@@ -394,6 +450,20 @@ body {
   transform: translateY(0);
 }
 
+.contact-card.is-submitted .contact-card__response {
+  position: relative;
+  inset: auto;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+}
+
 .contact-form,
 .contact-success {
   grid-area: 1 / 1;
@@ -421,13 +491,23 @@ body {
   pointer-events: auto;
 }
 
+.contact-card.is-submitted .contact-success {
+  place-self: center;
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
 .contact-form {
   margin-top: clamp(18px, 2.4svh, 28px);
 }
 
 .contact-success {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
   justify-items: center;
+  align-content: center;
   gap: 12px;
   width: min(760px, calc(100% - 48px));
   margin-top: 0;
@@ -436,16 +516,20 @@ body {
 }
 
 .contact-success strong {
+  display: block;
   font-family: 'Averia Serif Libre', Georgia, serif;
   font-size: clamp(2rem, 4vw, 4rem);
   line-height: 0.95;
+  text-align: center;
   white-space: nowrap;
 }
 
 .contact-success p {
+  display: block;
   max-width: 620px;
   margin: 0;
   color: rgb(247 241 237 / 0.72);
+  font-family: 'Averia Serif Libre', Georgia, serif;
   font-size: clamp(1rem, 1.45vw, 1.28rem);
   font-weight: 700;
   line-height: 1.28;
@@ -541,14 +625,20 @@ body {
   transform: translateY(-3px) scale(1.035);
 }
 
+@media (max-width: 900px) {
+  .contact-hidden-card,
+  .portfolio-wordmark-section img {
+    width: 100%;
+  }
+}
+
 @media (max-width: 720px) {
   .portfolio-contact-section {
-    padding: 12px;
+    --contact-section-padding: 12px;
   }
 
   .contact-card {
     border-radius: 24px;
-    min-height: auto;
     padding: clamp(34px, 8vw, 48px) 0;
   }
 

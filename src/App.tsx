@@ -177,10 +177,20 @@ function App() {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const loadingTextOneRef = useRef<HTMLSpanElement>(null)
   const loadingTextTwoRef = useRef<HTMLSpanElement>(null)
+  const contactRevealStageRef = useRef<HTMLDivElement>(null)
   const contactCardRef = useRef<HTMLDivElement>(null)
   const contactCardContentRef = useRef<HTMLDivElement>(null)
   const contactPopAudioRef = useRef<AudioContext | null>(null)
   const contactPopCooldownRef = useRef(0)
+  const timelineHoverCooldownRef = useRef(0)
+  const idCardDragAudioRef = useRef<{
+    gain: GainNode
+    noiseFilter: BiquadFilterNode
+    noiseSource: AudioBufferSourceNode
+    lfo: OscillatorNode
+    lfoGain: GainNode
+    oscillator: OscillatorNode
+  } | null>(null)
   const isMenuNavigationRef = useRef(false)
   const menuNavigationTimeoutRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -342,6 +352,183 @@ function App() {
       gain.disconnect()
     }
   }
+
+  const playTimelineCardHover = () => {
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return
+    }
+
+    const now = window.performance.now()
+
+    if (now - timelineHoverCooldownRef.current < 170) {
+      return
+    }
+
+    timelineHoverCooldownRef.current = now
+
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext
+
+    if (!AudioContextConstructor) {
+      return
+    }
+
+    const audioContext =
+      contactPopAudioRef.current ?? new AudioContextConstructor()
+    contactPopAudioRef.current = audioContext
+
+    if (audioContext.state === 'suspended') {
+      void audioContext.resume()
+    }
+
+    const startTime = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gain = audioContext.createGain()
+
+    oscillator.type = 'triangle'
+    oscillator.frequency.setValueAtTime(310, startTime)
+    oscillator.frequency.exponentialRampToValueAtTime(430, startTime + 0.04)
+    oscillator.frequency.exponentialRampToValueAtTime(260, startTime + 0.12)
+
+    gain.gain.setValueAtTime(0.0001, startTime)
+    gain.gain.exponentialRampToValueAtTime(0.026, startTime + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.16)
+
+    oscillator.connect(gain)
+    gain.connect(audioContext.destination)
+    oscillator.start(startTime)
+    oscillator.stop(startTime + 0.17)
+    oscillator.onended = () => {
+      oscillator.disconnect()
+      gain.disconnect()
+    }
+  }
+
+  const startIdCardDragSound = () => {
+    if (
+      typeof window === 'undefined' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      idCardDragAudioRef.current
+    ) {
+      return
+    }
+
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext
+
+    if (!AudioContextConstructor) {
+      return
+    }
+
+    const audioContext =
+      contactPopAudioRef.current ?? new AudioContextConstructor()
+    contactPopAudioRef.current = audioContext
+
+    if (audioContext.state === 'suspended') {
+      void audioContext.resume()
+    }
+
+    const startTime = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const lfo = audioContext.createOscillator()
+    const lfoGain = audioContext.createGain()
+    const noiseGain = audioContext.createGain()
+    const noiseFilter = audioContext.createBiquadFilter()
+    const gain = audioContext.createGain()
+    const noiseBuffer = audioContext.createBuffer(
+      1,
+      Math.floor(audioContext.sampleRate * 0.42),
+      audioContext.sampleRate,
+    )
+    const noiseData = noiseBuffer.getChannelData(0)
+
+    for (let index = 0; index < noiseData.length; index += 1) {
+      const fade = 1 - index / noiseData.length
+      noiseData[index] = (Math.random() * 2 - 1) * fade
+    }
+
+    const noiseSource = audioContext.createBufferSource()
+    noiseSource.buffer = noiseBuffer
+    noiseSource.loop = true
+
+    oscillator.type = 'sawtooth'
+    oscillator.frequency.setValueAtTime(76, startTime)
+    oscillator.frequency.exponentialRampToValueAtTime(92, startTime + 0.18)
+    lfo.type = 'sine'
+    lfo.frequency.setValueAtTime(5.4, startTime)
+    lfoGain.gain.setValueAtTime(8, startTime)
+
+    noiseFilter.type = 'bandpass'
+    noiseFilter.frequency.setValueAtTime(520, startTime)
+    noiseFilter.Q.setValueAtTime(7, startTime)
+    noiseGain.gain.setValueAtTime(0.0001, startTime)
+    noiseGain.gain.exponentialRampToValueAtTime(0.024, startTime + 0.04)
+    noiseGain.gain.exponentialRampToValueAtTime(0.012, startTime + 0.24)
+
+    gain.gain.setValueAtTime(0.0001, startTime)
+    gain.gain.exponentialRampToValueAtTime(0.009, startTime + 0.09)
+    gain.gain.setValueAtTime(0.012, startTime + 0.24)
+
+    lfo.connect(lfoGain)
+    lfoGain.connect(oscillator.frequency)
+    oscillator.connect(gain)
+    noiseSource.connect(noiseFilter)
+    noiseFilter.connect(noiseGain)
+    noiseGain.connect(gain)
+    gain.connect(audioContext.destination)
+    oscillator.start(startTime)
+    lfo.start(startTime)
+    noiseSource.start(startTime)
+
+    idCardDragAudioRef.current = {
+      gain,
+      noiseFilter,
+      noiseSource,
+      lfo,
+      lfoGain,
+      oscillator,
+    }
+  }
+
+  const stopIdCardDragSound = () => {
+    const dragAudio = idCardDragAudioRef.current
+
+    if (!dragAudio || !contactPopAudioRef.current) {
+      return
+    }
+
+    idCardDragAudioRef.current = null
+
+    const audioContext = contactPopAudioRef.current
+    const stopTime = audioContext.currentTime + 0.12
+
+    dragAudio.gain.gain.cancelScheduledValues(audioContext.currentTime)
+    dragAudio.gain.gain.setValueAtTime(
+      Math.max(dragAudio.gain.gain.value, 0.0001),
+      audioContext.currentTime,
+    )
+    dragAudio.gain.gain.exponentialRampToValueAtTime(0.0001, stopTime)
+    dragAudio.oscillator.stop(stopTime)
+    dragAudio.lfo.stop(stopTime)
+    dragAudio.noiseSource.stop(stopTime)
+
+    dragAudio.oscillator.onended = () => {
+      dragAudio.oscillator.disconnect()
+      dragAudio.lfo.disconnect()
+      dragAudio.lfoGain.disconnect()
+      dragAudio.noiseSource.disconnect()
+      dragAudio.noiseFilter.disconnect()
+      dragAudio.gain.disconnect()
+    }
+  }
+
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsContactSubmitted(true)
@@ -385,8 +572,15 @@ function App() {
       const cardStyles = window.getComputedStyle(card)
       const paddingBlock =
         parseFloat(cardStyles.paddingTop) + parseFloat(cardStyles.paddingBottom)
-      const contentHeight = content.scrollHeight + paddingBlock
-      const nextHeight = Math.ceil(contentHeight)
+      const minHeight = parseFloat(cardStyles.minHeight)
+      const contentHeight = isContactSubmitted
+        ? Number.isNaN(minHeight)
+          ? 0
+          : minHeight
+        : content.scrollHeight + paddingBlock
+      const nextHeight = Math.ceil(
+        Math.max(Number.isNaN(minHeight) ? 0 : minHeight, contentHeight),
+      )
 
       setContactCardHeight((currentHeight) =>
         currentHeight === nextHeight ? currentHeight : nextHeight,
@@ -404,6 +598,55 @@ function App() {
       window.removeEventListener('resize', updateContactCardHeight)
     }
   }, [isContactSubmitted, selectedContactAction])
+
+  useEffect(() => {
+    const stage = contactRevealStageRef.current
+
+    if (!stage) {
+      return undefined
+    }
+
+    let animationFrame = 0
+    const updateHiddenCardProgress = () => {
+      animationFrame = 0
+      const section = stage.closest<HTMLElement>('.portfolio-contact-section')
+      const rect = section?.getBoundingClientRect() ?? stage.getBoundingClientRect()
+      const revealDistance = 150
+      const revealStartOffset = parseFloat(
+        window.getComputedStyle(stage).paddingBottom,
+      )
+      const rawProgress = Math.max(
+        0,
+        Math.min(1, (-rect.top - revealStartOffset) / revealDistance),
+      )
+      const easedProgress = Math.pow(rawProgress, 0.82)
+
+      stage.style.setProperty(
+        '--contact-hidden-card-progress',
+        easedProgress.toFixed(3),
+      )
+    }
+
+    const scheduleHiddenCardProgress = () => {
+      if (animationFrame) {
+        return
+      }
+
+      animationFrame = window.requestAnimationFrame(updateHiddenCardProgress)
+    }
+
+    updateHiddenCardProgress()
+    window.addEventListener('scroll', scheduleHiddenCardProgress, {
+      passive: true,
+    })
+    window.addEventListener('resize', scheduleHiddenCardProgress)
+
+    return () => {
+      window.removeEventListener('scroll', scheduleHiddenCardProgress)
+      window.removeEventListener('resize', scheduleHiddenCardProgress)
+      window.cancelAnimationFrame(animationFrame)
+    }
+  }, [])
 
   useEffect(() => {
     if (!isLoading) {
@@ -1531,7 +1774,9 @@ function App() {
         deckTop + sectionScrollUnit * index,
       )
       const extraSnapPoints = Array.from(
-        document.querySelectorAll<HTMLElement>('.portfolio-extra-section'),
+        document.querySelectorAll<HTMLElement>(
+          '.portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
+        ),
       ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
       const isNearDeck =
         relativeScroll > -viewportHeight * 0.2 &&
@@ -1623,7 +1868,9 @@ function App() {
       }
 
       const extraSnapPoints = Array.from(
-        document.querySelectorAll<HTMLElement>('.portfolio-extra-section'),
+        document.querySelectorAll<HTMLElement>(
+          '.portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
+        ),
       ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
       const firstExtraSnapPoint = extraSnapPoints[0]
       const isInsideExtraSections =
@@ -1654,6 +1901,25 @@ function App() {
         const isPastLastExtraSnap =
           lastScrollDirection > 0 &&
           nearestExtraIndex >= extraSnapPoints.length - 1
+
+        const isRevealingContactCard =
+          lastScrollDirection > 0 &&
+          document
+            .querySelector<HTMLElement>('.portfolio-contact-section')
+            ?.contains(
+              document.elementFromPoint(
+                window.innerWidth / 2,
+                window.innerHeight / 2,
+              ),
+            ) &&
+          documentScroll < (extraSnapPoints[nearestExtraIndex + 1] ?? Infinity) - 80
+
+        if (isRevealingContactCard) {
+          lastRelativeScroll = relativeScroll
+          lastDocumentScroll = documentScroll
+          scheduleScrollGestureReset()
+          return
+        }
 
         if (isPastLastExtraSnap) {
           lastRelativeScroll = relativeScroll
@@ -2211,6 +2477,8 @@ function App() {
                     dragElastic={0.18}
                     dragMomentum={false}
                     dragSnapToOrigin
+                    onDragStart={startIdCardDragSound}
+                    onDragEnd={stopIdCardDragSound}
                     whileDrag={{
                       scale: 1.012,
                       rotate: -0.8,
@@ -2310,6 +2578,8 @@ function App() {
                           current === 'baton' ? null : 'baton',
                         )
                       }
+                      onFocus={playTimelineCardHover}
+                      onPointerEnter={playTimelineCardHover}
                     >
                       <span className="timeline-duration">2022</span>
                       <a
@@ -2349,6 +2619,8 @@ function App() {
                           current === 'fantacode' ? null : 'fantacode',
                         )
                       }
+                      onFocus={playTimelineCardHover}
+                      onPointerEnter={playTimelineCardHover}
                     >
                       <span className="timeline-duration">2018 - 2019</span>
                       <a
@@ -2386,6 +2658,8 @@ function App() {
                           current === 'bamboo' ? null : 'bamboo',
                         )
                       }
+                      onFocus={playTimelineCardHover}
+                      onPointerEnter={playTimelineCardHover}
                     >
                       <span className="timeline-duration">2017 - 2018</span>
                       <div className="timeline-logo timeline-logo-bamboo">
@@ -2421,11 +2695,8 @@ function App() {
         aria-label="Contacts"
       >
         <div
-          ref={contactCardRef}
-          className={`contact-card ${
-            selectedContactAction ? 'is-form-open' : ''
-          } ${isContactSubmitted ? 'is-submitted' : ''
-          }`}
+          ref={contactRevealStageRef}
+          className="contact-reveal-stage"
           style={
             {
               '--contact-card-height': contactCardHeight
@@ -2434,113 +2705,125 @@ function App() {
             } as CSSProperties
           }
         >
-          <button
-            className="contact-back"
-            type="button"
-            aria-label="Back to contact options"
-            onClick={() => {
-              setSelectedContactAction(null)
-              setIsContactSubmitted(false)
-            }}
-          />
-          <div className="contact-card__content" ref={contactCardContentRef}>
-            <div className="contact-card__intro">
-              <video
-                className="contact-card__video"
-                src={
-                  selectedContactAction
-                    ? '/contact-chatbot-laptop.webm'
-                    : '/contact-robot.webm'
-                }
-                autoPlay
-                loop
-                muted
-                playsInline
-                aria-hidden="true"
-              />
-              <h2>
-                {selectedContactAction ?? (
-                  <>
-                    Hey there!
-                    <br />
-                    How can I help you
-                  </>
-                )}
-                <span>
-                  {selectedContactAction ? (
-                    'Give me more deets'
-                  ) : (
+          <div
+            ref={contactCardRef}
+            className={`contact-card ${
+              selectedContactAction ? 'is-form-open' : ''
+            } ${isContactSubmitted ? 'is-submitted' : ''
+            }`}
+          >
+            <button
+              className="contact-back"
+              type="button"
+              aria-label="Back to contact options"
+              onClick={() => {
+                setSelectedContactAction(null)
+                setIsContactSubmitted(false)
+              }}
+            />
+            <div className="contact-card__content" ref={contactCardContentRef}>
+              <div className="contact-card__intro">
+                <video
+                  className="contact-card__video"
+                  src={
+                    selectedContactAction
+                      ? '/contact-chatbot-laptop.webm'
+                      : '/contact-robot.webm'
+                  }
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  aria-hidden="true"
+                />
+                <h2>
+                  {selectedContactAction ?? (
                     <>
-                      on this {contactDayPeriod} in{' '}
-                      <em>{contactLocation}</em>?
+                      Hey there!
+                      <br />
+                      How can I help you
                     </>
                   )}
-                </span>
-              </h2>
-              <div className="contact-actions" aria-label="Contact actions">
-                {contactActions.map((contactAction) => (
-                  <button
-                    key={contactAction}
-                    className="contact-action"
-                    type="button"
-                    onClick={() => {
-                      setSelectedContactAction(contactAction)
-                      setIsContactSubmitted(false)
-                    }}
-                    onFocus={playContactBubblePop}
-                    onPointerEnter={playContactBubblePop}
-                  >
-                    {contactAction}
+                  <span>
+                    {selectedContactAction ? (
+                      'Give me more deets'
+                    ) : (
+                      <>
+                        on this {contactDayPeriod} in{' '}
+                        <em>{contactLocation}</em>?
+                      </>
+                    )}
+                  </span>
+                </h2>
+                <div className="contact-actions" aria-label="Contact actions">
+                  {contactActions.map((contactAction) => (
+                    <button
+                      key={contactAction}
+                      className="contact-action"
+                      type="button"
+                      onClick={() => {
+                        setSelectedContactAction(contactAction)
+                        setIsContactSubmitted(false)
+                      }}
+                      onFocus={playContactBubblePop}
+                      onPointerEnter={playContactBubblePop}
+                    >
+                      {contactAction}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="contact-card__response">
+                <div className="contact-success" role="status" aria-live="polite">
+                  <strong>Sucessfully Submitted</strong>
+                  <p>
+                    Your submission is in. Now relax, I&apos;ll contact you soon.
+                  </p>
+                </div>
+                <form className="contact-form" onSubmit={handleContactSubmit}>
+                  <label className="contact-form__full-name">
+                    <span>Full Name</span>
+                    <input
+                      name="name"
+                      type="text"
+                      autoComplete="name"
+                      placeholder="Full Name"
+                    />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="Email"
+                    />
+                  </label>
+                  <label>
+                    <span>Phone</span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      autoComplete="tel"
+                      placeholder="Phone"
+                    />
+                  </label>
+                  <label className="contact-form__message">
+                    <span>Message</span>
+                    <textarea name="message" rows={4} placeholder="Message" />
+                  </label>
+                  <button className="contact-submit" type="submit">
+                    Submit
                   </button>
-                ))}
+                </form>
               </div>
-            </div>
-            <div className="contact-card__response">
-              <div className="contact-success" role="status" aria-live="polite">
-                <strong>Successfully Submitted</strong>
-                <p>
-                  Your submission is in. Now relax, I&apos;ll contact you soon.
-                </p>
-              </div>
-              <form className="contact-form" onSubmit={handleContactSubmit}>
-                <label className="contact-form__full-name">
-                  <span>Full Name</span>
-                  <input
-                    name="name"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="Full Name"
-                  />
-                </label>
-                <label>
-                  <span>Email</span>
-                  <input
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="Email"
-                  />
-                </label>
-                <label>
-                  <span>Phone</span>
-                  <input
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="Phone"
-                  />
-                </label>
-                <label className="contact-form__message">
-                  <span>Message</span>
-                  <textarea name="message" rows={4} placeholder="Message" />
-                </label>
-                <button className="contact-submit" type="submit">
-                  Submit
-                </button>
-              </form>
             </div>
           </div>
+          <div className="contact-hidden-card" aria-hidden="true" />
         </div>
+      </section>
+      <section className="portfolio-wordmark-section" aria-label="Wordmark">
+        <img src="/uxbyabhi.svg" alt="" aria-hidden="true" />
       </section>
       <div
         ref={menuRef}
