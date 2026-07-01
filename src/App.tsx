@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type MouseEvent,
+  type WheelEvent as ReactWheelEvent,
   useEffect,
   useRef,
   useState,
@@ -38,8 +39,67 @@ const contactActions = ['Say hi', 'Lets start a project', 'lets talk'] as const
 const menuLinks = [
   { href: '#about', label: 'About' },
   { href: '#works', label: 'Works' },
+  { href: '#taste', label: 'Taste' },
   { href: '#contact', label: 'Contact' },
 ] as const
+const workGridItems = Array.from({ length: 10 }, (_, index) => ({
+  alt: `Temporary work preview ${index + 1}`,
+  className:
+    index % 5 === 0
+      ? 'is-wide'
+      : index % 4 === 0
+        ? 'is-tall'
+        : '',
+  subtitle: [
+    'Product Design',
+    'Interface System',
+    'Frontend Build',
+    'Visual Direction',
+    'Experience Audit',
+  ][index % 5],
+  title: [
+    'Commerce Flow',
+    'Fleet Console',
+    'Health Dashboard',
+    'Creator Tools',
+    'Finance Workspace',
+    'Delivery Ops',
+    'Insight Cards',
+    'Mobile Journey',
+    'Admin Suite',
+    'Growth Lab',
+  ][index],
+  src: `https://picsum.photos/seed/uxbyabhi-work-${index + 1}/900/650`,
+}))
+const tastemaxxingGridItems = Array.from({ length: 10 }, (_, index) => ({
+  alt: `Temporary Tastemaxxing visual experiment ${index + 1}`,
+  className:
+    index % 4 === 1
+      ? 'is-wide'
+      : index % 5 === 2
+        ? 'is-tall'
+        : '',
+  subtitle: [
+    'Visual UI Experiment',
+    'Motion Study',
+    'Micro Interaction',
+    'Aesthetic System',
+    'Interface Mood',
+  ][index % 5],
+  title: [
+    'Glass Controls',
+    'Taste Panels',
+    'Gradient Ritual',
+    'Soft Chrome',
+    'Ambient Cards',
+    'Depth Buttons',
+    'Signal Shapes',
+    'Playful Stack',
+    'Hyper Detail',
+    'Mood Board',
+  ][index],
+  src: `https://picsum.photos/seed/tastemaxxing-${index + 1}/900/650`,
+}))
 type ContactAction = (typeof contactActions)[number]
 
 const getBrowserLocationLabel = () => {
@@ -168,6 +228,8 @@ function App() {
   const closingSlimePathRef = useRef<SVGPathElement>(null)
   const closingSectionRef = useRef<HTMLElement>(null)
   const fourthSectionRef = useRef<HTMLElement>(null)
+  const worksSectionRef = useRef<HTMLElement>(null)
+  const tastemaxxingSectionRef = useRef<HTMLElement>(null)
   const experienceIntroRef = useRef<HTMLDivElement>(null)
   const experienceDroneRef = useRef<HTMLDivElement>(null)
   const experienceCurrentRef = useRef<HTMLDivElement>(null)
@@ -183,14 +245,9 @@ function App() {
   const contactPopAudioRef = useRef<AudioContext | null>(null)
   const contactPopCooldownRef = useRef(0)
   const timelineHoverCooldownRef = useRef(0)
-  const idCardDragAudioRef = useRef<{
-    gain: GainNode
-    noiseFilter: BiquadFilterNode
-    noiseSource: AudioBufferSourceNode
-    lfo: OscillatorNode
-    lfoGain: GainNode
-    oscillator: OscillatorNode
-  } | null>(null)
+  const isIdCardDragSoundActiveRef = useRef(false)
+  const worksScrollHandoffTimeoutRef = useRef(0)
+  const activeShowcaseSectionRef = useRef<HTMLElement | null>(null)
   const isMenuNavigationRef = useRef(false)
   const menuNavigationTimeoutRef = useRef(0)
   const [isLoading, setIsLoading] = useState(true)
@@ -226,6 +283,27 @@ function App() {
 
     return false
   })
+  const [isWorksGridRevealed, setIsWorksGridRevealed] = useState(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return true
+    }
+
+    return false
+  })
+  const [isTastemaxxingGridRevealed, setIsTastemaxxingGridRevealed] =
+    useState(() => {
+      if (
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return true
+      }
+
+      return false
+    })
   const [isTimelineRevealed, setIsTimelineRevealed] = useState(() => {
     if (
       typeof window !== 'undefined' &&
@@ -279,6 +357,20 @@ function App() {
   const [contactCardHeight, setContactCardHeight] = useState<number | null>(
     null,
   )
+
+  const resetShowcaseGrid = (
+    section: HTMLElement | null,
+    behavior: ScrollBehavior = 'smooth',
+  ) => {
+    const gridScroller =
+      section?.querySelector<HTMLElement>('.works-grid-scroll')
+
+    gridScroller?.scrollTo({
+      top: 0,
+      behavior,
+    })
+  }
+
   const handleMenuLinkClick = (
     event: MouseEvent<HTMLAnchorElement>,
     href: (typeof menuLinks)[number]['href'],
@@ -288,10 +380,18 @@ function App() {
     window.clearTimeout(menuNavigationTimeoutRef.current)
     isMenuNavigationRef.current = true
 
-    document.querySelector<HTMLElement>(href)?.scrollIntoView({
+    const targetSection = document.querySelector<HTMLElement>(href)
+
+    targetSection?.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
     })
+
+    if (href === '#works' || href === '#taste') {
+      window.setTimeout(() => {
+        resetShowcaseGrid(targetSection)
+      }, 680)
+    }
 
     window.history.replaceState(null, '', href)
     menuNavigationTimeoutRef.current = window.setTimeout(() => {
@@ -435,11 +535,10 @@ function App() {
     }
   }
 
-  const startIdCardDragSound = () => {
+  const playIdCardUiTone = (tone: 'lift' | 'settle') => {
     if (
       typeof window === 'undefined' ||
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches ||
-      idCardDragAudioRef.current
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
     ) {
       return
     }
@@ -451,97 +550,127 @@ function App() {
     }
 
     const startTime = audioContext.currentTime
-    const oscillator = audioContext.createOscillator()
-    const lfo = audioContext.createOscillator()
-    const lfoGain = audioContext.createGain()
-    const noiseGain = audioContext.createGain()
-    const noiseFilter = audioContext.createBiquadFilter()
+    const primary = audioContext.createOscillator()
+    const secondary = audioContext.createOscillator()
     const gain = audioContext.createGain()
-    const noiseBuffer = audioContext.createBuffer(
-      1,
-      Math.floor(audioContext.sampleRate * 0.42),
-      audioContext.sampleRate,
-    )
-    const noiseData = noiseBuffer.getChannelData(0)
+    const endTime = startTime + 0.18
 
-    for (let index = 0; index < noiseData.length; index += 1) {
-      const fade = 1 - index / noiseData.length
-      noiseData[index] = (Math.random() * 2 - 1) * fade
+    primary.type = 'sine'
+    secondary.type = 'triangle'
+
+    if (tone === 'lift') {
+      primary.frequency.setValueAtTime(360, startTime)
+      primary.frequency.exponentialRampToValueAtTime(620, startTime + 0.12)
+      secondary.frequency.setValueAtTime(720, startTime)
+      secondary.frequency.exponentialRampToValueAtTime(930, startTime + 0.1)
+    } else {
+      primary.frequency.setValueAtTime(560, startTime)
+      primary.frequency.exponentialRampToValueAtTime(280, startTime + 0.14)
+      secondary.frequency.setValueAtTime(740, startTime)
+      secondary.frequency.exponentialRampToValueAtTime(410, startTime + 0.14)
     }
 
-    const noiseSource = audioContext.createBufferSource()
-    noiseSource.buffer = noiseBuffer
-    noiseSource.loop = true
-
-    oscillator.type = 'sawtooth'
-    oscillator.frequency.setValueAtTime(76, startTime)
-    oscillator.frequency.exponentialRampToValueAtTime(92, startTime + 0.18)
-    lfo.type = 'sine'
-    lfo.frequency.setValueAtTime(5.4, startTime)
-    lfoGain.gain.setValueAtTime(8, startTime)
-
-    noiseFilter.type = 'bandpass'
-    noiseFilter.frequency.setValueAtTime(520, startTime)
-    noiseFilter.Q.setValueAtTime(7, startTime)
-    noiseGain.gain.setValueAtTime(0.0001, startTime)
-    noiseGain.gain.exponentialRampToValueAtTime(0.048, startTime + 0.04)
-    noiseGain.gain.exponentialRampToValueAtTime(0.026, startTime + 0.24)
-
     gain.gain.setValueAtTime(0.0001, startTime)
-    gain.gain.exponentialRampToValueAtTime(0.02, startTime + 0.09)
-    gain.gain.setValueAtTime(0.026, startTime + 0.24)
+    gain.gain.exponentialRampToValueAtTime(
+      tone === 'lift' ? 0.038 : 0.03,
+      startTime + 0.018,
+    )
+    gain.gain.exponentialRampToValueAtTime(0.0001, endTime)
 
-    lfo.connect(lfoGain)
-    lfoGain.connect(oscillator.frequency)
-    oscillator.connect(gain)
-    noiseSource.connect(noiseFilter)
-    noiseFilter.connect(noiseGain)
-    noiseGain.connect(gain)
+    primary.connect(gain)
+    secondary.connect(gain)
     gain.connect(audioContext.destination)
-    oscillator.start(startTime)
-    lfo.start(startTime)
-    noiseSource.start(startTime)
-
-    idCardDragAudioRef.current = {
-      gain,
-      noiseFilter,
-      noiseSource,
-      lfo,
-      lfoGain,
-      oscillator,
+    primary.start(startTime)
+    secondary.start(startTime)
+    primary.stop(endTime)
+    secondary.stop(endTime)
+    primary.onended = () => {
+      primary.disconnect()
+      secondary.disconnect()
+      gain.disconnect()
     }
   }
 
-  const stopIdCardDragSound = () => {
-    const dragAudio = idCardDragAudioRef.current
-
-    if (!dragAudio || !contactPopAudioRef.current) {
+  const startIdCardDragSound = () => {
+    if (isIdCardDragSoundActiveRef.current) {
       return
     }
 
-    idCardDragAudioRef.current = null
+    isIdCardDragSoundActiveRef.current = true
+    playIdCardUiTone('lift')
+  }
 
-    const audioContext = contactPopAudioRef.current
-    const stopTime = audioContext.currentTime + 0.12
+  const stopIdCardDragSound = () => {
+    isIdCardDragSoundActiveRef.current = false
+    playIdCardUiTone('settle')
+  }
 
-    dragAudio.gain.gain.cancelScheduledValues(audioContext.currentTime)
-    dragAudio.gain.gain.setValueAtTime(
-      Math.max(dragAudio.gain.gain.value, 0.0001),
-      audioContext.currentTime,
-    )
-    dragAudio.gain.gain.exponentialRampToValueAtTime(0.0001, stopTime)
-    dragAudio.oscillator.stop(stopTime)
-    dragAudio.lfo.stop(stopTime)
-    dragAudio.noiseSource.stop(stopTime)
+  const handleWorksGridWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const gridScroller = event.currentTarget
+    const worksSection =
+      gridScroller.closest<HTMLElement>('.works-showcase-section')
+    const viewportHeight = window.innerHeight || 1
+    const worksRect = worksSection?.getBoundingClientRect()
+    const isWorksSettled =
+      worksRect !== undefined &&
+      Math.abs(worksRect.top) <= 8 &&
+      Math.abs(worksRect.bottom - viewportHeight) <= 8
 
-    dragAudio.oscillator.onended = () => {
-      dragAudio.oscillator.disconnect()
-      dragAudio.lfo.disconnect()
-      dragAudio.lfoGain.disconnect()
-      dragAudio.noiseSource.disconnect()
-      dragAudio.noiseFilter.disconnect()
-      dragAudio.gain.disconnect()
+    if (
+      window.innerWidth > 720 &&
+      worksSection &&
+      !isWorksSettled &&
+      Math.abs(event.deltaY) >= 4
+    ) {
+      event.preventDefault()
+
+      if (!worksScrollHandoffTimeoutRef.current) {
+        worksSection.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+
+        worksScrollHandoffTimeoutRef.current = window.setTimeout(() => {
+          worksScrollHandoffTimeoutRef.current = 0
+        }, 620)
+      }
+
+      return
     }
+
+    const isAtTop = gridScroller.scrollTop <= 1
+    const isAtBottom =
+      gridScroller.scrollTop + gridScroller.clientHeight >=
+      gridScroller.scrollHeight - 1
+    const isScrollingUp = event.deltaY < 0
+    const isScrollingDown = event.deltaY > 0
+
+    if (
+      window.innerWidth <= 720 ||
+      Math.abs(event.deltaY) < 4 ||
+      worksScrollHandoffTimeoutRef.current ||
+      ((!isAtTop || !isScrollingUp) && (!isAtBottom || !isScrollingDown))
+    ) {
+      return
+    }
+
+    const targetSection = isScrollingDown
+      ? worksSection?.nextElementSibling
+      : worksSection?.previousElementSibling
+
+    if (!(targetSection instanceof HTMLElement)) {
+      return
+    }
+
+    event.preventDefault()
+    targetSection.scrollIntoView({
+      behavior: 'smooth',
+      block: isScrollingUp ? 'end' : 'start',
+    })
+
+    worksScrollHandoffTimeoutRef.current = window.setTimeout(() => {
+      worksScrollHandoffTimeoutRef.current = 0
+    }, 720)
   }
 
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -566,6 +695,7 @@ function App() {
   useEffect(
     () => () => {
       window.clearTimeout(menuNavigationTimeoutRef.current)
+      window.clearTimeout(worksScrollHandoffTimeoutRef.current)
     },
     [],
   )
@@ -598,6 +728,123 @@ function App() {
     setContactDayPeriod(getDayPeriod())
     setContactLocation(getBrowserLocationLabel())
   }, [])
+
+  useEffect(() => {
+    const showcaseSections = [
+      worksSectionRef.current,
+      tastemaxxingSectionRef.current,
+    ].filter((section): section is HTMLElement => Boolean(section))
+
+    if (!showcaseSections.length) {
+      return undefined
+    }
+
+    const resetSettledGrid = () => {
+      const viewportHeight = window.innerHeight || 1
+      const settledSection = showcaseSections.find((section) => {
+        const rect = section.getBoundingClientRect()
+
+        return (
+          Math.abs(rect.top) <= viewportHeight * 0.18 &&
+          rect.bottom >= viewportHeight * 0.72
+        )
+      })
+
+      if (!settledSection) {
+        activeShowcaseSectionRef.current = null
+        return
+      }
+
+      if (activeShowcaseSectionRef.current === settledSection) {
+        return
+      }
+
+      activeShowcaseSectionRef.current = settledSection
+      resetShowcaseGrid(settledSection)
+    }
+
+    resetSettledGrid()
+    window.addEventListener('scroll', resetSettledGrid, { passive: true })
+    window.addEventListener('resize', resetSettledGrid)
+
+    return () => {
+      window.removeEventListener('scroll', resetSettledGrid)
+      window.removeEventListener('resize', resetSettledGrid)
+    }
+  }, [])
+
+  useEffect(() => {
+    const revealTargets = [
+      {
+        isRevealed: isWorksGridRevealed,
+        ref: worksSectionRef,
+        reveal: () => setIsWorksGridRevealed(true),
+      },
+      {
+        isRevealed: isTastemaxxingGridRevealed,
+        ref: tastemaxxingSectionRef,
+        reveal: () => setIsTastemaxxingGridRevealed(true),
+      },
+    ].filter(({ isRevealed, ref }) => !isRevealed && ref.current)
+
+    if (!revealTargets.length) {
+      return undefined
+    }
+
+    const revealVisibleTargets = () => {
+      const viewportHeight = window.innerHeight || 1
+
+      revealTargets.forEach(({ ref, reveal }) => {
+        const target = ref.current
+
+        if (!target) {
+          return
+        }
+
+        const rect = target.getBoundingClientRect()
+        const isNearViewport =
+          rect.top < viewportHeight * 0.9 && rect.bottom > viewportHeight * 0.1
+
+        if (isNearViewport) {
+          reveal()
+        }
+      })
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting || entry.intersectionRatio < 0.28) {
+            return
+          }
+
+          const target = revealTargets.find(
+            ({ ref }) => ref.current === entry.target,
+          )
+
+          target?.reveal()
+          observer.unobserve(entry.target)
+        })
+      },
+      { threshold: [0.28] },
+    )
+
+    revealTargets.forEach(({ ref }) => {
+      if (ref.current) {
+        observer.observe(ref.current)
+      }
+    })
+
+    revealVisibleTargets()
+    window.addEventListener('scroll', revealVisibleTargets, { passive: true })
+    window.addEventListener('resize', revealVisibleTargets)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('scroll', revealVisibleTargets)
+      window.removeEventListener('resize', revealVisibleTargets)
+    }
+  }, [isTastemaxxingGridRevealed, isWorksGridRevealed])
 
   useEffect(() => {
     const card = contactCardRef.current
@@ -1134,6 +1381,9 @@ function App() {
         target instanceof Element &&
           target.closest('a, button, [role="button"], input, textarea, select'),
       )
+      const isOverWorkCard = Boolean(
+        target instanceof Element && target.closest('.work-grid-card'),
+      )
 
       targetCursorX = event.clientX
       targetCursorY = event.clientY
@@ -1147,13 +1397,14 @@ function App() {
           cursor.style.opacity = '0'
         }
 
+        cursor.classList.toggle('is-work-card', isOverWorkCard)
         cursor.style.background = isOverOpenMenu ? '#f3c623' : '#1677ff'
       }
 
       scheduleRender()
     }
 
-    const handlePointerLeave = () => {
+      const handlePointerLeave = () => {
       pointerActive = false
       if (gridActive) {
         gridNeedsDraw = true
@@ -1161,6 +1412,7 @@ function App() {
       gridActive = false
       if (cursor) {
         cursor.style.opacity = '0'
+        cursor.classList.remove('is-work-card')
       }
       scheduleRender()
     }
@@ -1814,7 +2066,7 @@ function App() {
       )
       const extraSnapPoints = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '.portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
+          '.works-showcase-section, .portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
         ),
       ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
       const isNearDeck =
@@ -1908,7 +2160,7 @@ function App() {
 
       const extraSnapPoints = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '.portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
+          '.works-showcase-section, .portfolio-extra-section, .portfolio-contact-section, .portfolio-wordmark-section',
         ),
       ).map((extraSection) => extraSection.getBoundingClientRect().top + window.scrollY)
       const firstExtraSnapPoint = extraSnapPoints[0]
@@ -2720,10 +2972,88 @@ function App() {
       </div>
       <section
         id="works"
-        className="portfolio-extra-section"
+        ref={worksSectionRef}
+        className={`works-section works-showcase-section ${
+          isWorksGridRevealed ? 'is-grid-revealed' : ''
+        }`}
         aria-label="My works"
       >
-        <h2>My works</h2>
+        <aside className="works-copy">
+          <h2>My works</h2>
+          <p>
+            A running collection of product interfaces, visual systems, and
+            useful digital details shaped across design and frontend craft.
+          </p>
+          <p>
+            Each piece starts with a practical problem and ends as something
+            people can understand, trust, and move through easily.
+          </p>
+          <strong>Thoughtful products, built for use.</strong>
+        </aside>
+        <div
+          className="works-grid-scroll"
+          onWheel={handleWorksGridWheel}
+        >
+          <div className="works-grid">
+            {workGridItems.map((item, index) => (
+              <figure
+                key={item.src}
+                className={`work-grid-card ${item.className}`}
+                style={{ '--work-item-index': index } as CSSProperties}
+                tabIndex={0}
+                onFocus={playTimelineCardHover}
+                onPointerEnter={playTimelineCardHover}
+              >
+                <img src={item.src} alt={item.alt} loading="lazy" />
+                <figcaption className="work-grid-card__caption">
+                  <strong>{item.title}</strong>
+                  <span>{item.subtitle}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section
+        id="taste"
+        ref={tastemaxxingSectionRef}
+        className={`works-section works-showcase-section tastemaxxing-section ${
+          isTastemaxxingGridRevealed ? 'is-grid-revealed' : ''
+        }`}
+        aria-label="Tastemaxxing"
+      >
+        <div className="works-grid-scroll" onWheel={handleWorksGridWheel}>
+          <div className="works-grid">
+            {tastemaxxingGridItems.map((item, index) => (
+              <figure
+                key={item.src}
+                className={`work-grid-card ${item.className}`}
+                style={{ '--work-item-index': index } as CSSProperties}
+                tabIndex={0}
+                onFocus={playTimelineCardHover}
+                onPointerEnter={playTimelineCardHover}
+              >
+                <img src={item.src} alt={item.alt} loading="lazy" />
+                <figcaption className="work-grid-card__caption">
+                  <strong>{item.title}</strong>
+                  <span>{item.subtitle}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+        <aside className="works-copy">
+          <h2>Some taste</h2>
+          <p>
+            A visual playground for UI experiments, interaction moods, and
+            small interface ideas that lean into taste first.
+          </p>
+          <p>
+            These are explorations where composition, motion, type, and surface
+            details get room to become the main experience.
+          </p>
+          <strong>Visual UI experiments with feeling.</strong>
+        </aside>
       </section>
       <section className="portfolio-extra-section" aria-label="Hobbies">
         <h2>Hobbies</h2>
@@ -2858,10 +3188,28 @@ function App() {
               </div>
             </div>
           </div>
-          <div className="contact-hidden-card" aria-hidden="true" />
+          <footer className="contact-hidden-card" aria-label="Footer">
+            <div className="contact-footer-brand">
+              <div>
+                <strong>Abhishek Veenakkat</strong>
+                <p>
+                  Senior UI/UX Designer and Frontend Engineer building
+                  thoughtful digital products.
+                </p>
+              </div>
+            </div>
+            <div className="contact-footer-meta">
+              <span>Location</span>
+              <strong>Calicut, Kerala, India</strong>
+              <p>
+                Available for selected freelance and full-time opportunities.
+              </p>
+            </div>
+          </footer>
         </div>
       </section>
       <section className="portfolio-wordmark-section" aria-label="Wordmark">
+        <p>2026 - Made with Codex + ReactJS</p>
         <img src="/uxbyabhi.svg" alt="" aria-hidden="true" />
       </section>
       <div
